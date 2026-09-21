@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Judge | Code-A-Thon</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header class="top">
+  <h1>👩‍⚖️ Judge Scorecard</h1>
+  <div class="row">
+    <span id="judgeBadge" class="pill hidden"></span>
+    <button id="switchJudgeBtn" class="btn secondary small hidden">Switch judge</button>
+    <a href="index.html" class="btn secondary small">Home</a>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- Judge selection -->
+  <div id="selectJudgeCard" class="card" style="max-width:420px;margin:40px auto;">
+    <h2 style="margin-top:0;">Who's judging?</h2>
+    <p class="muted" style="font-size:13px;">Pick your name from the list. This was set up by the event admin.</p>
+    <label for="judgeSelect">Judge</label>
+    <select id="judgeSelect"></select>
+    <button id="continueBtn" class="btn" style="width:100%;margin-top:16px;">Continue</button>
+    <p id="noJudgesMsg" class="muted hidden" style="margin-top:12px;">No judges have been added yet. Ask the admin to add you on the Admin Console.</p>
+  </div>
+
+  <!-- Team list -->
+  <div id="teamsSection" class="hidden">
+    <div class="card row between">
+      <div>
+        <div style="font-weight:700;font-size:16px;" id="progressText">Scored 0 of 0 teams</div>
+        <div class="muted" style="font-size:12px;">Tap a team to score or edit their scorecard.</div>
+      </div>
+    </div>
+    <div id="teamsGrid" class="grid"></div>
+    <p id="noTeamsMsg" class="muted hidden">No teams have been added yet. Check back once the admin adds teams.</p>
+  </div>
+</div>
+
+<!-- Scoring modal -->
+<div id="scoreModal" class="modal-backdrop hidden">
+  <div class="modal">
+    <h2 id="modalTeamName" style="margin-top:0;"></h2>
+    <div id="modalTeamLead" class="muted" style="font-size:13px;margin-bottom:10px;"></div>
+    <div id="criteriaContainer"></div>
+    <label for="commentsBox">Comments (optional)</label>
+    <textarea id="commentsBox" placeholder="Any feedback for the team..."></textarea>
+    <div class="row between" style="margin-top:18px;">
+      <div>Total: <strong id="totalVal">0</strong> / 50</div>
+      <div class="row">
+        <button id="cancelScoreBtn" class="btn secondary">Cancel</button>
+        <button id="submitScoreBtn" class="btn">Save Score</button>
+      </div>
+    </div>
+    <div id="scoreErr" class="err hidden"></div>
+  </div>
+</div>
+
+<script type="module" src="judge.js"></script>
+</body>
+</html>

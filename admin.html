@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Admin | Code-A-Thon</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- Login -->
+<div id="loginScreen" class="center-screen">
+  <div class="card landing-card">
+    <div class="logo">🔐</div>
+    <h1>Admin Console</h1>
+    <p>Sign in with the admin account created in Firebase.</p>
+    <label for="emailInput">Email</label>
+    <input id="emailInput" type="email" placeholder="admin@example.com" />
+    <label for="passInput">Password</label>
+    <input id="passInput" type="password" placeholder="••••••••" />
+    <button id="loginBtn" class="btn" style="width:100%;margin-top:16px;">Sign in</button>
+    <div id="loginErr" class="err hidden"></div>
+    <p style="margin-top:16px;"><a href="index.html">← Back home</a></p>
+  </div>
+</div>
+
+<!-- Dashboard -->
+<div id="dashboard" class="hidden">
+  <header class="top">
+    <h1>🔐 Admin Console</h1>
+    <div class="row">
+      <span id="adminBadge" class="pill"></span>
+      <button id="logoutBtn" class="btn secondary small">Sign out</button>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="leaderboard">📊 Leaderboard</button>
+      <button class="tab-btn" data-tab="matrix">🧮 Judge Coverage</button>
+      <button class="tab-btn" data-tab="teams">🏗️ Teams</button>
+      <button class="tab-btn" data-tab="judges">👩‍⚖️ Judges</button>
+      <button class="tab-btn" data-tab="reset">♻️ Reset Scores</button>
+    </div>
+
+    <!-- Leaderboard -->
+    <div class="tab-panel active" id="tab-leaderboard">
+      <div class="card row" style="justify-content:space-around;">
+        <div class="stat"><div class="num" id="statTeams">0</div><div class="lbl">Teams</div></div>
+        <div class="stat"><div class="num" id="statJudges">0</div><div class="lbl">Judges</div></div>
+        <div class="stat"><div class="num" id="statScores">0</div><div class="lbl">Scorecards submitted</div></div>
+      </div>
+      <div class="card">
+        <h2 style="margin-top:0;">Leaderboard (avg total / 50)</h2>
+        <div class="table-scroll">
+          <table id="leaderboardTable">
+            <thead>
+              <tr>
+                <th>#</th><th>Team</th><th>Lead</th><th># Judges</th>
+                <th>Avg Total</th>
+                <th>Innovation</th><th>Technical</th><th>Design</th><th>Presentation</th><th>Impact</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Judge coverage matrix -->
+    <div class="tab-panel" id="tab-matrix">
+      <div class="card">
+        <h2 style="margin-top:0;">Who has scored whom</h2>
+        <p class="muted" style="font-size:13px;">✅ = scored, — = not yet. Numbers are the total (/50) that judge gave.</p>
+        <div class="table-scroll">
+          <table id="matrixTable"><thead></thead><tbody></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Teams management -->
+    <div class="tab-panel" id="tab-teams">
+      <div class="card">
+        <h2 style="margin-top:0;">Add a team</h2>
+        <div class="row">
+          <div style="flex:1;"><label>Team name</label><input id="newTeamName" placeholder="e.g. Byte Busters" /></div>
+          <div style="flex:1;"><label>Team lead</label><input id="newTeamLead" placeholder="e.g. Jane Doe" /></div>
+        </div>
+        <button id="addTeamBtn" class="btn" style="margin-top:16px;">Add team</button>
+        <div id="teamErr" class="err hidden"></div>
+      </div>
+      <div class="card">
+        <h2 style="margin-top:0;">All teams</h2>
+        <div class="table-scroll">
+          <table id="teamsTable">
+            <thead><tr><th>Team</th><th>Lead</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Judges management -->
+    <div class="tab-panel" id="tab-judges">
+      <div class="card">
+        <h2 style="margin-top:0;">Add a judge</h2>
+        <div class="row">
+          <div style="flex:1;"><label>Judge name</label><input id="newJudgeName" placeholder="e.g. Alex Kim" /></div>
+        </div>
+        <button id="addJudgeBtn" class="btn" style="margin-top:16px;">Add judge</button>
+        <div id="judgeErr" class="err hidden"></div>
+      </div>
+      <div class="card">
+        <h2 style="margin-top:0;">All judges</h2>
+        <div class="table-scroll">
+          <table id="judgesTable">
+            <thead><tr><th>Judge</th><th>Status</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Reset -->
+    <div class="tab-panel" id="tab-reset">
+      <div class="card">
+        <h2 style="margin-top:0;">Reset ALL scores</h2>
+        <p class="muted" style="font-size:13px;">Deletes every scorecard from every judge for every team. Cannot be undone.</p>
+        <button id="resetAllBtn" class="btn danger">Reset all scores</button>
+      </div>
+      <div class="card">
+        <h2 style="margin-top:0;">Reset one judge's scores</h2>
+        <div class="row">
+          <select id="resetJudgeSelect" style="flex:1;"></select>
+          <button id="resetJudgeBtn" class="btn warn">Reset this judge</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2 style="margin-top:0;">Reset one team's scores</h2>
+        <div class="row">
+          <select id="resetTeamSelect" style="flex:1;"></select>
+          <button id="resetTeamBtn" class="btn warn">Reset this team</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="admin.js"></script>
+</body>
+</html>
