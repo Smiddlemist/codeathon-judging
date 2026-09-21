@@ -133,7 +133,7 @@ function renderLeaderboard() {
   const headRow = document.getElementById("leaderboardHeadRow");
   headRow.innerHTML =
     "<th>#</th><th>Team</th><th>Lead</th><th># Judges</th><th>Weighted Score</th>" +
-    criteria.map((c) => `<th>${escapeHtml(c.label)}</th>`).join("");
+    criteria.map((c) => `<th title="${escapeHtml(c.description || "")}">${escapeHtml(c.label)}</th>`).join("");
 
   const rows = teams.map((team) => {
     const teamScores = scores.filter((s) => s.teamId === team.id);
@@ -197,7 +197,7 @@ function openTeamDetail(team) {
           .map((c) => {
             const val = s.criteria ? s.criteria[c.id] : undefined;
             return typeof val === "number"
-              ? `<span class="pill" style="margin:2px;">${escapeHtml(c.label)}: ${val}</span>`
+              ? `<span class="pill" title="${escapeHtml(c.description || "")}" style="margin:2px;">${escapeHtml(c.label)}: ${val}</span>`
               : "";
           })
           .join("");
@@ -357,10 +357,12 @@ function renderJudgesTable() {
 document.getElementById("addCritBtn").addEventListener("click", async () => {
   const labelEl = document.getElementById("newCritLabel");
   const weightEl = document.getElementById("newCritWeight");
+  const descEl = document.getElementById("newCritDesc");
   const errEl = document.getElementById("critErr");
   errEl.classList.add("hidden");
   const label = labelEl.value.trim();
   const weight = Number(weightEl.value);
+  const description = descEl.value.trim();
   if (!label) {
     errEl.textContent = "Category name is required.";
     errEl.classList.remove("hidden");
@@ -373,52 +375,83 @@ document.getElementById("addCritBtn").addEventListener("click", async () => {
   }
   try {
     const nextOrder = criteria.length ? Math.max(...criteria.map((c) => c.order ?? 0)) + 1 : 0;
-    await addDoc(collection(db, "criteria"), { label, weight, order: nextOrder, createdAt: Date.now() });
+    await addDoc(collection(db, "criteria"), { label, weight, description, order: nextOrder, createdAt: Date.now() });
     labelEl.value = "";
     weightEl.value = "1";
+    descEl.value = "";
   } catch (e) {
     errEl.textContent = "Failed to add category.";
     errEl.classList.remove("hidden");
   }
 });
 
+document.getElementById("loadDefaultsBtn").addEventListener("click", async () => {
+  const msg = criteria.length
+    ? "This replaces ALL current categories with the 10 recommended defaults (Business Need Alignment, User Value and Impact, Functionality, and so on). Scorecards already submitted keep their recorded values, but existing categories will stop counting once replaced. Continue?"
+    : "Load the 10 recommended default categories?";
+  if (!confirm(msg)) return;
+  if (criteria.length) {
+    const batch = writeBatch(db);
+    criteria.forEach((c) => batch.delete(doc(db, "criteria", c.id)));
+    await batch.commit();
+  }
+  for (let i = 0; i < DEFAULT_CRITERIA.length; i++) {
+    await addDoc(collection(db, "criteria"), { ...DEFAULT_CRITERIA[i], order: i, createdAt: Date.now() });
+  }
+});
+
 function renderCritTable() {
-  const tbody = document.querySelector("#critTable tbody");
-  tbody.innerHTML = "";
+  const container = document.getElementById("critList");
+  container.innerHTML = "";
+  if (criteria.length === 0) {
+    container.innerHTML = `<p class="muted">No categories yet. Add one above, or click "Load recommended defaults."</p>`;
+    return;
+  }
   criteria.forEach((c, idx) => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>
-        <button class="btn secondary small" data-dir="up" ${idx === 0 ? "disabled" : ""}>↑</button>
-        <button class="btn secondary small" data-dir="down" ${idx === criteria.length - 1 ? "disabled" : ""}>↓</button>
-      </td>
-      <td>${escapeHtml(c.label)}</td>
-      <td>
-        <input type="number" min="0.1" step="0.1" value="${c.weight ?? 1}" style="width:80px;display:inline-block;" />
-        <button class="btn secondary small saveWeightBtn">Save</button>
-      </td>
-      <td><button class="btn danger small removeCritBtn">Remove</button></td>
+    const row = document.createElement("div");
+    row.className = "card";
+    row.style.marginBottom = "10px";
+    row.innerHTML = `
+      <div class="row between">
+        <div class="row">
+          <button class="btn secondary small" data-dir="up" ${idx === 0 ? "disabled" : ""}>↑</button>
+          <button class="btn secondary small" data-dir="down" ${idx === criteria.length - 1 ? "disabled" : ""}>↓</button>
+        </div>
+        <button class="btn danger small removeCritBtn">Remove</button>
+      </div>
+      <label>Category name</label>
+      <input class="labelInput" value="${escapeHtml(c.label)}" />
+      <label>Weight</label>
+      <input class="weightInput" type="number" min="0.1" step="0.1" value="${c.weight ?? 1}" style="max-width:120px;" />
+      <label>Description (what judges should look for)</label>
+      <textarea class="descInput" style="min-height:44px;">${escapeHtml(c.description || "")}</textarea>
+      <button class="btn saveCritBtn" style="margin-top:10px;">Save changes</button>
     `;
 
-    tr.querySelector('[data-dir="up"]').addEventListener("click", () => moveCriterion(idx, -1));
-    tr.querySelector('[data-dir="down"]').addEventListener("click", () => moveCriterion(idx, 1));
+    row.querySelector('[data-dir="up"]').addEventListener("click", () => moveCriterion(idx, -1));
+    row.querySelector('[data-dir="down"]').addEventListener("click", () => moveCriterion(idx, 1));
 
-    const weightInput = tr.querySelector("input");
-    tr.querySelector(".saveWeightBtn").addEventListener("click", async () => {
-      const newWeight = Number(weightInput.value);
-      if (!(newWeight > 0)) {
-        alert("Weight must be a positive number.");
-        return;
-      }
-      await updateDoc(doc(db, "criteria", c.id), { weight: newWeight });
-    });
-
-    tr.querySelector(".removeCritBtn").addEventListener("click", async () => {
+    row.querySelector(".removeCritBtn").addEventListener("click", async () => {
       if (!confirm(`Remove category "${c.label}"? Past scores keep their recorded value, but it will no longer count toward anyone's weighted score.`)) return;
       await deleteDoc(doc(db, "criteria", c.id));
     });
 
-    tbody.appendChild(tr);
+    row.querySelector(".saveCritBtn").addEventListener("click", async () => {
+      const newLabel = row.querySelector(".labelInput").value.trim();
+      const newWeight = Number(row.querySelector(".weightInput").value);
+      const newDesc = row.querySelector(".descInput").value.trim();
+      if (!newLabel) {
+        alert("Category name can't be empty.");
+        return;
+      }
+      if (!(newWeight > 0)) {
+        alert("Weight must be a positive number.");
+        return;
+      }
+      await updateDoc(doc(db, "criteria", c.id), { label: newLabel, weight: newWeight, description: newDesc });
+    });
+
+    container.appendChild(row);
   });
 }
 

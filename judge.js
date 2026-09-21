@@ -213,8 +213,12 @@ function renderCriteria() {
   criteria.forEach((c) => {
     const row = document.createElement("div");
     const weightBadge = c.weight && c.weight !== 1 ? ` <span class="pill">weight ×${c.weight}</span>` : "";
+    const descHtml = c.description
+      ? `<div class="muted" style="font-size:12px;margin-top:2px;">${escapeHtml(c.description)}</div>`
+      : "";
     row.innerHTML = `
-      <label>${escapeHtml(c.label)}${weightBadge}</label>
+      <label style="margin-bottom:0;">${escapeHtml(c.label)}${weightBadge}</label>
+      ${descHtml}
       <div class="slider-row">
         <input type="range" min="0" max="10" step="1" value="${sliderValues[c.id]}" data-key="${c.id}" />
         <div class="val">${sliderValues[c.id]}</div>

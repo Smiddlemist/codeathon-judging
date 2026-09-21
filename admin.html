@@ -123,24 +123,24 @@
     <!-- Categories management -->
     <div class="tab-panel" id="tab-categories">
       <div class="card">
-        <h2 style="margin-top:0;">Add a scoring category</h2>
+        <div class="row between">
+          <h2 style="margin:0;">Add a scoring category</h2>
+          <button id="loadDefaultsBtn" class="btn secondary small">↺ Load recommended defaults</button>
+        </div>
         <p class="muted" style="font-size:13px;">Weight controls how much a category counts toward the final score. A weight of 2 counts twice as much as a weight of 1. Weights don't need to add up to any particular number -- they're relative to each other.</p>
         <div class="row">
           <div style="flex:2;"><label>Category name</label><input id="newCritLabel" placeholder="e.g. Code Quality" /></div>
           <div style="flex:1;"><label>Weight</label><input id="newCritWeight" type="number" min="0.1" step="0.1" value="1" /></div>
         </div>
+        <label>Description (what judges should look for)</label>
+        <textarea id="newCritDesc" placeholder="e.g. Does the core application work as demonstrated?" style="min-height:44px;"></textarea>
         <button id="addCritBtn" class="btn" style="margin-top:16px;">Add category</button>
         <div id="critErr" class="err hidden"></div>
       </div>
       <div class="card">
         <h2 style="margin-top:0;">Current categories</h2>
         <p class="muted" style="font-size:13px;">Changing a weight recalculates the leaderboard immediately for all existing scores.</p>
-        <div class="table-scroll">
-          <table id="critTable">
-            <thead><tr><th>Order</th><th>Category</th><th>Weight</th><th></th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
+        <div id="critList"></div>
       </div>
     </div>
 

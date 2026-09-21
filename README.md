@@ -162,31 +162,52 @@ yourself.
 
 Scoring categories are no longer hardcoded — they live in Firestore and are
 managed from the **Admin Console → ⚖️ Categories** tab. The first time an
-admin logs in, five defaults are created automatically (Innovation &
-Creativity, Technical Execution, Design & UX, Presentation & Communication,
-Impact & Usefulness), each with a weight of 1.
+admin logs in with an empty category list, ten defaults are created
+automatically, matching a standard Code-A-Thon rubric:
 
-From that tab you can:
-- **Add** a new category with any name and weight.
-- **Reorder** categories with the ↑/↓ buttons (this controls the order
-  judges see them in).
-- **Change a weight** at any time — the leaderboard recalculates
-  immediately for every existing scorecard, since weighting is applied at
-  display time, not baked into each score.
-- **Remove** a category — existing scorecards keep whatever value a judge
-  gave for it, but it stops counting toward anyone's weighted score once
-  removed.
+| Category | Weight | What to judge |
+|---|---|---|
+| Business Need Alignment | 10 | Does the application clearly address the stated business problem? |
+| User Value and Impact | 10 | How useful, meaningful, or beneficial would this be to its intended users? |
+| Functionality | 5 | Does the core application work as demonstrated? |
+| Innovation and Creativity | 5 | Is the approach original, clever, or meaningfully different? |
+| User Experience and Design | 5 | Is it intuitive, accessible, and pleasant to use? |
+| Technical Execution | 5 | How well-built, reliable, and thoughtfully engineered is it? |
+| Feasibility and Scalability | 5 | Could the idea realistically be developed or deployed further? |
+| Completeness and Polish | 5 | Does the solution feel cohesive and ready for the next step? |
+| Demo Quality and Storytelling | 5 | Is the presentation clear, engaging, and focused on the solution's value? |
+| Team Execution and Collaboration | 5 | Did the team make effective use of the limited time and work cohesively? |
+
+If you already had categories set up from before (e.g. the original 5
+defaults), the Categories tab has a **"↺ Load recommended defaults"**
+button — click it and confirm to wipe the current category list and load
+the table above in one step. (Any scores already submitted keep their
+recorded numbers, but they'll stop counting toward the weighted score once
+their category is removed — so it's best to do this before judging starts,
+or to accept that judges will need to re-score after a reset.)
+
+From the Categories tab you can, for any category:
+- **Edit** its name, weight, or description at any time and click "Save
+  changes."
+- **Reorder** categories with the ↑/↓ buttons (controls the order judges
+  see them in).
+- **Remove** it — existing scorecards keep whatever value a judge gave for
+  it, but it stops counting toward anyone's weighted score once removed.
+- **Add** a brand new one with any name, weight, and description.
 
 **How weighting works:** each category is still scored 0–10 by judges. A
 team's weighted score is the weighted average across categories:
 `(score₁ × weight₁ + score₂ × weight₂ + …) ÷ (weight₁ + weight₂ + …)`,
 which always lands on a 0–10 scale no matter how many categories you have
-or what weights you use. Weights are relative — `2` simply counts twice as
-much as `1`; they don't need to sum to 100 or any other number.
+or what weights you use. Weights are relative — `10` simply counts twice
+as much as `5`; they don't need to sum to 100 or any other number.
 
-Judges see each category's weight as a small badge next to its slider
-(only shown when the weight isn't 1), so they understand which categories
-matter more, even though they still just score 0–10 on each.
+Judges see each category's **weight** (as a small badge, when it isn't 1)
+and its **description** (as helper text right under the category name) on
+their scorecard, so they know what to look for and which categories matter
+most — even though they still just move a single 0–10 slider for each.
+Admins see the same description as a tooltip on the leaderboard's column
+headers, and in the team detail view's per-category tags.
 
 ## Scorecard notes
 
