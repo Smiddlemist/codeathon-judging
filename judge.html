@@ -48,10 +48,18 @@
     <h2 id="modalTeamName" style="margin-top:0;"></h2>
     <div id="modalTeamLead" class="muted" style="font-size:13px;margin-bottom:10px;"></div>
     <div id="criteriaContainer"></div>
-    <label for="commentsBox">Comments (optional)</label>
-    <textarea id="commentsBox" placeholder="Any feedback for the team..."></textarea>
+    <p id="noCriteriaMsg" class="muted hidden">No scoring categories have been set up yet. Ask the admin to add some in the Admin Console.</p>
+
+    <h3 style="margin:20px 0 4px;">Notes</h3>
+    <label for="strengthsBox">Strengths</label>
+    <textarea id="strengthsBox" placeholder="What did this team do well?"></textarea>
+    <label for="improvementsBox">Areas to improve</label>
+    <textarea id="improvementsBox" placeholder="What could be better?"></textarea>
+    <label for="commentsBox">Additional comments (optional)</label>
+    <textarea id="commentsBox" placeholder="Anything else worth noting..."></textarea>
+
     <div class="row between" style="margin-top:18px;">
-      <div>Total: <strong id="totalVal">0</strong> / 50</div>
+      <div>Weighted score: <strong id="totalVal">0.0</strong> / 10</div>
       <div class="row">
         <button id="cancelScoreBtn" class="btn secondary">Cancel</button>
         <button id="submitScoreBtn" class="btn">Save Score</button>

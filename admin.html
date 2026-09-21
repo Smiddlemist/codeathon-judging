@@ -40,6 +40,7 @@
       <button class="tab-btn" data-tab="matrix">🧮 Judge Coverage</button>
       <button class="tab-btn" data-tab="teams">🏗️ Teams</button>
       <button class="tab-btn" data-tab="judges">👩‍⚖️ Judges</button>
+      <button class="tab-btn" data-tab="categories">⚖️ Categories</button>
       <button class="tab-btn" data-tab="reset">♻️ Reset Scores</button>
     </div>
 
@@ -51,16 +52,14 @@
         <div class="stat"><div class="num" id="statScores">0</div><div class="lbl">Scorecards submitted</div></div>
       </div>
       <div class="card">
-        <h2 style="margin-top:0;">Leaderboard (avg total / 50)</h2>
+        <div class="row between">
+          <h2 style="margin:0;">Leaderboard (weighted score / 10)</h2>
+          <button id="exportCsvBtn" class="btn secondary small">⬇️ Export CSV</button>
+        </div>
+        <p class="muted" style="font-size:12px;">Click any row to see that team's per-judge scores and written feedback.</p>
         <div class="table-scroll">
           <table id="leaderboardTable">
-            <thead>
-              <tr>
-                <th>#</th><th>Team</th><th>Lead</th><th># Judges</th>
-                <th>Avg Total</th>
-                <th>Innovation</th><th>Technical</th><th>Design</th><th>Presentation</th><th>Impact</th>
-              </tr>
-            </thead>
+            <thead><tr id="leaderboardHeadRow"></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -71,7 +70,7 @@
     <div class="tab-panel" id="tab-matrix">
       <div class="card">
         <h2 style="margin-top:0;">Who has scored whom</h2>
-        <p class="muted" style="font-size:13px;">✅ = scored, — = not yet. Numbers are the total (/50) that judge gave.</p>
+        <p class="muted" style="font-size:13px;">✅ = scored, — = not yet. Numbers are the weighted score (/10) that judge gave.</p>
         <div class="table-scroll">
           <table id="matrixTable"><thead></thead><tbody></tbody></table>
         </div>
@@ -121,6 +120,30 @@
       </div>
     </div>
 
+    <!-- Categories management -->
+    <div class="tab-panel" id="tab-categories">
+      <div class="card">
+        <h2 style="margin-top:0;">Add a scoring category</h2>
+        <p class="muted" style="font-size:13px;">Weight controls how much a category counts toward the final score. A weight of 2 counts twice as much as a weight of 1. Weights don't need to add up to any particular number -- they're relative to each other.</p>
+        <div class="row">
+          <div style="flex:2;"><label>Category name</label><input id="newCritLabel" placeholder="e.g. Code Quality" /></div>
+          <div style="flex:1;"><label>Weight</label><input id="newCritWeight" type="number" min="0.1" step="0.1" value="1" /></div>
+        </div>
+        <button id="addCritBtn" class="btn" style="margin-top:16px;">Add category</button>
+        <div id="critErr" class="err hidden"></div>
+      </div>
+      <div class="card">
+        <h2 style="margin-top:0;">Current categories</h2>
+        <p class="muted" style="font-size:13px;">Changing a weight recalculates the leaderboard immediately for all existing scores.</p>
+        <div class="table-scroll">
+          <table id="critTable">
+            <thead><tr><th>Order</th><th>Category</th><th>Weight</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <!-- Reset -->
     <div class="tab-panel" id="tab-reset">
       <div class="card">
@@ -143,6 +166,18 @@
         </div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- Team detail modal -->
+<div id="teamDetailModal" class="modal-backdrop hidden">
+  <div class="modal" style="max-width:640px;">
+    <div class="row between">
+      <h2 id="detailTeamName" style="margin:0;"></h2>
+      <button id="closeDetailBtn" class="btn secondary small">Close</button>
+    </div>
+    <div id="detailTeamLead" class="muted" style="font-size:13px;margin-bottom:14px;"></div>
+    <div id="detailContent"></div>
   </div>
 </div>
 

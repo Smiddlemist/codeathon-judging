@@ -34,15 +34,18 @@ const firebaseConfig = {
 // the admin (step 6 above). It's also referenced in the Firestore rules.
 export const ADMIN_EMAIL = "smiddlemist@sundt.com";
 
-// The 5 scoring categories, each scored 0-10.
-// Edit this list (and the matching one in admin.js) if you want to
-// change what judges score on.
-export const CRITERIA = [
-  { key: "innovation", label: "Innovation & Creativity" },
-  { key: "technical", label: "Technical Execution" },
-  { key: "design", label: "Design & UX" },
-  { key: "presentation", label: "Presentation & Communication" },
-  { key: "impact", label: "Impact & Usefulness" }
+// Scoring categories now live in Firestore (the "criteria" collection) and
+// are managed from the Admin Console's "Categories" tab -- add, remove,
+// rename, and set a weight for each. This list is ONLY used once, the very
+// first time the app runs, to seed sensible defaults into Firestore if the
+// "criteria" collection is empty. After that it's ignored -- edit categories
+// from the Admin Console instead.
+export const DEFAULT_CRITERIA = [
+  { label: "Innovation & Creativity", weight: 1 },
+  { label: "Technical Execution", weight: 1 },
+  { label: "Design & UX", weight: 1 },
+  { label: "Presentation & Communication", weight: 1 },
+  { label: "Impact & Usefulness", weight: 1 }
 ];
 
 export const app = initializeApp(firebaseConfig);

@@ -1,8 +1,8 @@
 import {
-  auth, db, signInAnonymously, onAuthStateChanged, CRITERIA
+  auth, db, signInAnonymously, onAuthStateChanged
 } from "./firebase-init.js";
 import {
-  collection, doc, getDocs, setDoc, onSnapshot, query, orderBy
+  collection, doc, setDoc, onSnapshot, query, orderBy
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 
 const judgeSelect = document.getElementById("judgeSelect");
@@ -20,6 +20,9 @@ const scoreModal = document.getElementById("scoreModal");
 const modalTeamName = document.getElementById("modalTeamName");
 const modalTeamLead = document.getElementById("modalTeamLead");
 const criteriaContainer = document.getElementById("criteriaContainer");
+const noCriteriaMsg = document.getElementById("noCriteriaMsg");
+const strengthsBox = document.getElementById("strengthsBox");
+const improvementsBox = document.getElementById("improvementsBox");
 const commentsBox = document.getElementById("commentsBox");
 const totalVal = document.getElementById("totalVal");
 const cancelScoreBtn = document.getElementById("cancelScoreBtn");
@@ -28,6 +31,7 @@ const scoreErr = document.getElementById("scoreErr");
 
 let judges = [];
 let teams = [];
+let criteria = []; // [{id, label, weight, order}]
 let myScores = {}; // teamId -> score doc
 let currentJudge = null;
 let currentTeam = null;
@@ -40,17 +44,26 @@ onAuthStateChanged(auth, (user) => {
   if (user) {
     loadJudges();
     loadTeams();
+    loadCriteria();
   }
 });
 
 function loadJudges() {
-  const judgesRef = collection(db, "judges");
-  onSnapshot(judgesRef, (snap) => {
+  onSnapshot(collection(db, "judges"), (snap) => {
     judges = snap.docs
       .map((d) => ({ id: d.id, ...d.data() }))
       .filter((j) => j.active !== false)
       .sort((a, b) => a.name.localeCompare(b.name));
     renderJudgeSelect();
+  });
+}
+
+function loadCriteria() {
+  onSnapshot(collection(db, "criteria"), (snap) => {
+    criteria = snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    renderTeams(); // re-render so score badges reflect the current weighting
   });
 }
 
@@ -72,11 +85,11 @@ function renderJudgeSelect() {
   const savedId = localStorage.getItem("judgeId");
   if (savedId && judges.some((j) => j.id === savedId)) {
     judgeSelect.value = savedId;
-    selectJudge(savedId, true);
+    selectJudge(savedId);
   }
 }
 
-function selectJudge(judgeId, skipUI) {
+function selectJudge(judgeId) {
   currentJudge = judges.find((j) => j.id === judgeId);
   if (!currentJudge) return;
   localStorage.setItem("judgeId", judgeId);
@@ -103,8 +116,7 @@ function loadTeams() {
 }
 
 function loadMyScores() {
-  const scoresRef = collection(db, "scores");
-  onSnapshot(scoresRef, (snap) => {
+  onSnapshot(collection(db, "scores"), (snap) => {
     myScores = {};
     snap.docs.forEach((d) => {
       const data = d.data();
@@ -114,6 +126,21 @@ function loadMyScores() {
     });
     renderTeams();
   });
+}
+
+function weightedScoreOf(scoreDoc) {
+  if (!scoreDoc || !scoreDoc.criteria) return 0;
+  let sum = 0;
+  let weightTotal = 0;
+  criteria.forEach((c) => {
+    const val = scoreDoc.criteria[c.id];
+    if (typeof val === "number") {
+      const w = c.weight ?? 1;
+      sum += val * w;
+      weightTotal += w;
+    }
+  });
+  return weightTotal > 0 ? sum / weightTotal : 0;
 }
 
 function renderTeams() {
@@ -130,6 +157,7 @@ function renderTeams() {
   teams.forEach((team) => {
     const existing = myScores[team.id];
     if (existing) scoredCount++;
+    const weighted = existing ? weightedScoreOf(existing).toFixed(1) : null;
 
     const card = document.createElement("div");
     card.className = "card team-card";
@@ -138,7 +166,7 @@ function renderTeams() {
       <div class="team-lead">Lead: ${escapeHtml(team.lead || "—")}</div>
       ${
         existing
-          ? `<span class="score-badge">✅ Scored — ${existing.total}/50</span>`
+          ? `<span class="score-badge">✅ Scored — ${weighted}/10</span>`
           : `<span class="score-badge pending">⏳ Not scored yet</span>`
       }
       <button class="btn ${existing ? "secondary" : ""}" style="margin-top:8px;">
@@ -156,13 +184,16 @@ function openModal(team) {
   currentTeam = team;
   const existing = myScores[team.id];
   sliderValues = {};
-  CRITERIA.forEach((c) => {
-    sliderValues[c.key] = existing ? existing.criteria[c.key] : 5;
+  criteria.forEach((c) => {
+    const existingVal = existing && existing.criteria ? existing.criteria[c.id] : undefined;
+    sliderValues[c.id] = typeof existingVal === "number" ? existingVal : 5;
   });
 
   modalTeamName.textContent = team.name;
   modalTeamLead.textContent = "Lead: " + (team.lead || "—");
-  commentsBox.value = existing ? existing.comments || "" : "";
+  strengthsBox.value = existing ? existing.strengths || "" : "";
+  improvementsBox.value = existing ? existing.improvements || "" : "";
+  commentsBox.value = existing ? existing.additionalComments || "" : "";
   scoreErr.classList.add("hidden");
   renderCriteria();
   scoreModal.classList.remove("hidden");
@@ -170,19 +201,29 @@ function openModal(team) {
 
 function renderCriteria() {
   criteriaContainer.innerHTML = "";
-  CRITERIA.forEach((c) => {
+  if (criteria.length === 0) {
+    noCriteriaMsg.classList.remove("hidden");
+    submitScoreBtn.disabled = true;
+    totalVal.textContent = "0.0";
+    return;
+  }
+  noCriteriaMsg.classList.add("hidden");
+  submitScoreBtn.disabled = false;
+
+  criteria.forEach((c) => {
     const row = document.createElement("div");
+    const weightBadge = c.weight && c.weight !== 1 ? ` <span class="pill">weight ×${c.weight}</span>` : "";
     row.innerHTML = `
-      <label>${c.label}</label>
+      <label>${escapeHtml(c.label)}${weightBadge}</label>
       <div class="slider-row">
-        <input type="range" min="0" max="10" step="1" value="${sliderValues[c.key]}" data-key="${c.key}" />
-        <div class="val">${sliderValues[c.key]}</div>
+        <input type="range" min="0" max="10" step="1" value="${sliderValues[c.id]}" data-key="${c.id}" />
+        <div class="val">${sliderValues[c.id]}</div>
       </div>
     `;
     const input = row.querySelector("input");
     const valDiv = row.querySelector(".val");
     input.addEventListener("input", () => {
-      sliderValues[c.key] = Number(input.value);
+      sliderValues[c.id] = Number(input.value);
       valDiv.textContent = input.value;
       updateTotal();
     });
@@ -192,8 +233,15 @@ function renderCriteria() {
 }
 
 function updateTotal() {
-  const total = Object.values(sliderValues).reduce((a, b) => a + b, 0);
-  totalVal.textContent = total;
+  let sum = 0;
+  let weightTotal = 0;
+  criteria.forEach((c) => {
+    const w = c.weight ?? 1;
+    sum += (sliderValues[c.id] ?? 0) * w;
+    weightTotal += w;
+  });
+  const weighted = weightTotal > 0 ? sum / weightTotal : 0;
+  totalVal.textContent = weighted.toFixed(1);
 }
 
 cancelScoreBtn.addEventListener("click", () => {
@@ -201,11 +249,10 @@ cancelScoreBtn.addEventListener("click", () => {
 });
 
 submitScoreBtn.addEventListener("click", async () => {
-  if (!currentJudge || !currentTeam) return;
+  if (!currentJudge || !currentTeam || criteria.length === 0) return;
   submitScoreBtn.disabled = true;
   scoreErr.classList.add("hidden");
   try {
-    const total = Object.values(sliderValues).reduce((a, b) => a + b, 0);
     const scoreId = `${currentJudge.id}_${currentTeam.id}`;
     await setDoc(doc(db, "scores", scoreId), {
       judgeId: currentJudge.id,
@@ -213,8 +260,9 @@ submitScoreBtn.addEventListener("click", async () => {
       teamId: currentTeam.id,
       teamName: currentTeam.name,
       criteria: { ...sliderValues },
-      total,
-      comments: commentsBox.value.trim(),
+      strengths: strengthsBox.value.trim(),
+      improvements: improvementsBox.value.trim(),
+      additionalComments: commentsBox.value.trim(),
       updatedAt: Date.now()
     });
     scoreModal.classList.add("hidden");

@@ -79,6 +79,11 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /criteria/{criterionId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
     match /scores/{scoreId} {
       allow read: if isSignedIn();
       // scoreId is always "<judgeId>_<teamId>" — this stops a client from
@@ -153,26 +158,77 @@ yourself.
 - **Teams/Judges** tabs let you remove a team or judge (removing a team also
   deletes its scores).
 
-## Customizing the scoring criteria
+## Scoring categories and weights
 
-The 5 categories (Innovation, Technical Execution, Design & UX,
-Presentation, Impact), each scored 0–10, are defined in `firebase-init.js`
-in the `CRITERIA` array:
+Scoring categories are no longer hardcoded — they live in Firestore and are
+managed from the **Admin Console → ⚖️ Categories** tab. The first time an
+admin logs in, five defaults are created automatically (Innovation &
+Creativity, Technical Execution, Design & UX, Presentation & Communication,
+Impact & Usefulness), each with a weight of 1.
 
-```js
-export const CRITERIA = [
-  { key: "innovation", label: "Innovation & Creativity" },
-  { key: "technical", label: "Technical Execution" },
-  { key: "design", label: "Design & UX" },
-  { key: "presentation", label: "Presentation & Communication" },
-  { key: "impact", label: "Impact & Usefulness" }
-];
-```
+From that tab you can:
+- **Add** a new category with any name and weight.
+- **Reorder** categories with the ↑/↓ buttons (this controls the order
+  judges see them in).
+- **Change a weight** at any time — the leaderboard recalculates
+  immediately for every existing scorecard, since weighting is applied at
+  display time, not baked into each score.
+- **Remove** a category — existing scorecards keep whatever value a judge
+  gave for it, but it stops counting toward anyone's weighted score once
+  removed.
 
-Edit this list to add, remove, or rename categories — both `judge.js` and
-`admin.js` import from here, so you only need to change it in one place.
-If you add/remove categories after scores already exist, old scorecards
-just won't display a value for the new category (they won't error).
+**How weighting works:** each category is still scored 0–10 by judges. A
+team's weighted score is the weighted average across categories:
+`(score₁ × weight₁ + score₂ × weight₂ + …) ÷ (weight₁ + weight₂ + …)`,
+which always lands on a 0–10 scale no matter how many categories you have
+or what weights you use. Weights are relative — `2` simply counts twice as
+much as `1`; they don't need to sum to 100 or any other number.
+
+Judges see each category's weight as a small badge next to its slider
+(only shown when the weight isn't 1), so they understand which categories
+matter more, even though they still just score 0–10 on each.
+
+## Scorecard notes
+
+Each scorecard now has three feedback fields instead of one general
+comments box:
+- **Strengths** — what the team did well
+- **Areas to improve** — constructive feedback
+- **Additional comments** — anything else
+
+These are visible to admins via the leaderboard's **team detail view**
+(click any row in the Leaderboard tab) — useful for compiling feedback to
+send back to teams after the event.
+
+## Exporting results
+
+The Leaderboard tab has an **⬇️ Export CSV** button that downloads the
+current standings (rank, team, lead, judge count, weighted score, and each
+category's average) as a spreadsheet-ready file — handy for archiving
+results or sharing with sponsors/organizers who don't need Admin Console
+access.
+
+## Ideas for later (not built yet)
+
+A few things that would be reasonable next steps if you want them —
+just ask and I can add any of these:
+
+- **Lock scoring after a deadline.** A toggle in the admin console that
+  closes the judge scorecard once judging time is up, so no more edits can
+  sneak in while you're tallying results.
+- **Per-judge PINs or logins.** Right now any judge can pick any name from
+  the dropdown (see the security note in Stage 3 above). Real per-judge
+  credentials would close that gap if it matters for your event.
+- **Randomized team order per judge.** Currently every judge sees teams in
+  the same (alphabetical) order, which can subtly bias later-viewed teams.
+  Shuffling the order per judge (consistently, so it doesn't reshuffle
+  every time they reload) would reduce that.
+- **Highlight best/worst score per category** on the leaderboard, so
+  standout categories are easy to spot at a glance.
+- **Tie-breaker rules**, e.g. falling back to a specific category's average
+  when two teams' weighted scores are equal.
+- **A public results/leaderboard page** (read-only, no login) to project
+  on a screen during the closing ceremony.
 
 ## File overview
 
