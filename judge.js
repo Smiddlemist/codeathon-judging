@@ -1,60 +1,109 @@
 import {
-  auth, db, signInAnonymously, onAuthStateChanged
+  auth, db, signInWithEmailAndPassword, sendPasswordResetEmail,
+  onAuthStateChanged, signOut
 } from "./firebase-init.js";
 import {
-  collection, doc, setDoc, onSnapshot, query, orderBy
+  collection, doc, getDoc, setDoc, onSnapshot, query, orderBy
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 
-const judgeSelect = document.getElementById("judgeSelect");
-const selectJudgeCard = document.getElementById("selectJudgeCard");
-const continueBtn = document.getElementById("continueBtn");
-const noJudgesMsg = document.getElementById("noJudgesMsg");
-const teamsSection = document.getElementById("teamsSection");
+const loginScreen = document.getElementById("loginScreen");
+const emailInput = document.getElementById("emailInput");
+const passInput = document.getElementById("passInput");
+const loginBtn = document.getElementById("loginBtn");
+const loginErr = document.getElementById("loginErr");
+const forgotBtn = document.getElementById("forgotBtn");
+
+const judgeApp = document.getElementById("judgeApp");
+const judgeBadge = document.getElementById("judgeBadge");
+const signOutBtn = document.getElementById("signOutBtn");
+
+const teamsView = document.getElementById("teamsView");
 const teamsGrid = document.getElementById("teamsGrid");
 const noTeamsMsg = document.getElementById("noTeamsMsg");
 const progressText = document.getElementById("progressText");
-const judgeBadge = document.getElementById("judgeBadge");
-const switchJudgeBtn = document.getElementById("switchJudgeBtn");
 
-const scoreModal = document.getElementById("scoreModal");
-const modalTeamName = document.getElementById("modalTeamName");
-const modalTeamLead = document.getElementById("modalTeamLead");
+const scorecardView = document.getElementById("scorecardView");
+const backToTeamsBtn = document.getElementById("backToTeamsBtn");
+const scTeamName = document.getElementById("scTeamName");
+const scTeamLead = document.getElementById("scTeamLead");
+const liveScoreVal = document.getElementById("liveScoreVal");
 const criteriaContainer = document.getElementById("criteriaContainer");
 const noCriteriaMsg = document.getElementById("noCriteriaMsg");
 const strengthsBox = document.getElementById("strengthsBox");
 const improvementsBox = document.getElementById("improvementsBox");
 const commentsBox = document.getElementById("commentsBox");
-const totalVal = document.getElementById("totalVal");
 const cancelScoreBtn = document.getElementById("cancelScoreBtn");
 const submitScoreBtn = document.getElementById("submitScoreBtn");
 const scoreErr = document.getElementById("scoreErr");
 
-let judges = [];
+let currentJudge = null; // { id: uid, name, email }
 let teams = [];
-let criteria = []; // [{id, label, weight, order}]
-let myScores = {}; // teamId -> score doc
-let currentJudge = null;
+let criteria = [];
+let myScores = {};
 let currentTeam = null;
 let sliderValues = {};
 
-// ---- Auth: sign in anonymously so Firestore rules allow read/write ----
-signInAnonymously(auth).catch((e) => console.error("Anon sign-in failed", e));
-
-onAuthStateChanged(auth, (user) => {
-  if (user) {
-    loadJudges();
-    loadTeams();
-    loadCriteria();
+// ---------- Login ----------
+loginBtn.addEventListener("click", async () => {
+  loginErr.classList.add("hidden");
+  loginBtn.disabled = true;
+  try {
+    await signInWithEmailAndPassword(auth, emailInput.value.trim(), passInput.value);
+  } catch (e) {
+    loginErr.textContent = "Sign-in failed. Check your email and password.";
+    loginErr.classList.remove("hidden");
+  } finally {
+    loginBtn.disabled = false;
   }
 });
 
-function loadJudges() {
-  onSnapshot(collection(db, "judges"), (snap) => {
-    judges = snap.docs
-      .map((d) => ({ id: d.id, ...d.data() }))
-      .filter((j) => j.active !== false)
-      .sort((a, b) => a.name.localeCompare(b.name));
-    renderJudgeSelect();
+forgotBtn.addEventListener("click", async () => {
+  const email = emailInput.value.trim();
+  if (!email) {
+    loginErr.textContent = "Type your email above first, then click 'Forgot your password?' again.";
+    loginErr.classList.remove("hidden");
+    return;
+  }
+  try {
+    await sendPasswordResetEmail(auth, email);
+    loginErr.classList.add("hidden");
+    alert("If that email has an account, a password reset link has been sent to it.");
+  } catch (e) {
+    alert("If that email has an account, a password reset link has been sent to it.");
+  }
+});
+
+signOutBtn.addEventListener("click", () => signOut(auth));
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) {
+    judgeApp.classList.add("hidden");
+    loginScreen.classList.remove("hidden");
+    currentJudge = null;
+    return;
+  }
+  // Confirm this account is a registered, active judge.
+  const judgeDocSnap = await getDoc(doc(db, "judges", user.uid));
+  if (!judgeDocSnap.exists() || judgeDocSnap.data().active === false) {
+    loginErr.textContent = "This account isn't set up as an active judge. Contact the event admin.";
+    loginErr.classList.remove("hidden");
+    await signOut(auth);
+    return;
+  }
+  currentJudge = { id: user.uid, ...judgeDocSnap.data() };
+  loginScreen.classList.add("hidden");
+  judgeApp.classList.remove("hidden");
+  judgeBadge.textContent = "👤 " + currentJudge.name;
+  loadTeams();
+  loadCriteria();
+  loadMyScores();
+});
+
+// ---------- Live data ----------
+function loadTeams() {
+  onSnapshot(query(collection(db, "teams"), orderBy("name")), (snap) => {
+    teams = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    renderTeams();
   });
 }
 
@@ -63,54 +112,6 @@ function loadCriteria() {
     criteria = snap.docs
       .map((d) => ({ id: d.id, ...d.data() }))
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-    renderTeams(); // re-render so score badges reflect the current weighting
-  });
-}
-
-function renderJudgeSelect() {
-  judgeSelect.innerHTML = "";
-  if (judges.length === 0) {
-    noJudgesMsg.classList.remove("hidden");
-    continueBtn.disabled = true;
-    return;
-  }
-  noJudgesMsg.classList.add("hidden");
-  continueBtn.disabled = false;
-  judges.forEach((j) => {
-    const opt = document.createElement("option");
-    opt.value = j.id;
-    opt.textContent = j.name;
-    judgeSelect.appendChild(opt);
-  });
-  const savedId = localStorage.getItem("judgeId");
-  if (savedId && judges.some((j) => j.id === savedId)) {
-    judgeSelect.value = savedId;
-    selectJudge(savedId);
-  }
-}
-
-function selectJudge(judgeId) {
-  currentJudge = judges.find((j) => j.id === judgeId);
-  if (!currentJudge) return;
-  localStorage.setItem("judgeId", judgeId);
-  selectJudgeCard.classList.add("hidden");
-  teamsSection.classList.remove("hidden");
-  judgeBadge.textContent = "👤 " + currentJudge.name;
-  judgeBadge.classList.remove("hidden");
-  switchJudgeBtn.classList.remove("hidden");
-  loadMyScores();
-}
-
-continueBtn.addEventListener("click", () => selectJudge(judgeSelect.value));
-switchJudgeBtn.addEventListener("click", () => {
-  localStorage.removeItem("judgeId");
-  location.reload();
-});
-
-function loadTeams() {
-  const teamsRef = query(collection(db, "teams"), orderBy("name"));
-  onSnapshot(teamsRef, (snap) => {
-    teams = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     renderTeams();
   });
 }
@@ -143,6 +144,7 @@ function weightedScoreOf(scoreDoc) {
   return weightTotal > 0 ? sum / weightTotal : 0;
 }
 
+// ---------- Team list view ----------
 function renderTeams() {
   if (!currentJudge) return;
   teamsGrid.innerHTML = "";
@@ -173,14 +175,15 @@ function renderTeams() {
         ${existing ? "Edit Score" : "Score this team"}
       </button>
     `;
-    card.querySelector("button").addEventListener("click", () => openModal(team));
+    card.querySelector("button").addEventListener("click", () => openScorecard(team));
     teamsGrid.appendChild(card);
   });
 
   progressText.textContent = `Scored ${scoredCount} of ${teams.length} teams`;
 }
 
-function openModal(team) {
+// ---------- Full-page scorecard ----------
+function openScorecard(team) {
   currentTeam = team;
   const existing = myScores[team.id];
   sliderValues = {};
@@ -189,54 +192,65 @@ function openModal(team) {
     sliderValues[c.id] = typeof existingVal === "number" ? existingVal : 5;
   });
 
-  modalTeamName.textContent = team.name;
-  modalTeamLead.textContent = "Lead: " + (team.lead || "—");
+  scTeamName.textContent = team.name;
+  scTeamLead.textContent = "Lead: " + (team.lead || "—");
   strengthsBox.value = existing ? existing.strengths || "" : "";
   improvementsBox.value = existing ? existing.improvements || "" : "";
   commentsBox.value = existing ? existing.additionalComments || "" : "";
   scoreErr.classList.add("hidden");
   renderCriteria();
-  scoreModal.classList.remove("hidden");
+
+  teamsView.classList.add("hidden");
+  scorecardView.classList.remove("hidden");
+  window.scrollTo({ top: 0, behavior: "auto" });
 }
+
+function closeScorecard() {
+  scorecardView.classList.add("hidden");
+  teamsView.classList.remove("hidden");
+  currentTeam = null;
+}
+
+backToTeamsBtn.addEventListener("click", closeScorecard);
+cancelScoreBtn.addEventListener("click", closeScorecard);
 
 function renderCriteria() {
   criteriaContainer.innerHTML = "";
   if (criteria.length === 0) {
     noCriteriaMsg.classList.remove("hidden");
     submitScoreBtn.disabled = true;
-    totalVal.textContent = "0.0";
+    liveScoreVal.textContent = "0.0";
     return;
   }
   noCriteriaMsg.classList.add("hidden");
   submitScoreBtn.disabled = false;
 
   criteria.forEach((c) => {
-    const row = document.createElement("div");
+    const block = document.createElement("div");
+    block.className = "criterion-block";
     const weightBadge = c.weight && c.weight !== 1 ? ` <span class="pill">weight ×${c.weight}</span>` : "";
-    const descHtml = c.description
-      ? `<div class="muted" style="font-size:12px;margin-top:2px;">${escapeHtml(c.description)}</div>`
-      : "";
-    row.innerHTML = `
-      <label style="margin-bottom:0;">${escapeHtml(c.label)}${weightBadge}</label>
+    const descHtml = c.description ? `<div class="crit-desc">${escapeHtml(c.description)}</div>` : "";
+    block.innerHTML = `
+      <div class="crit-label">${escapeHtml(c.label)}${weightBadge}</div>
       ${descHtml}
       <div class="slider-row">
         <input type="range" min="0" max="10" step="1" value="${sliderValues[c.id]}" data-key="${c.id}" />
         <div class="val">${sliderValues[c.id]}</div>
       </div>
     `;
-    const input = row.querySelector("input");
-    const valDiv = row.querySelector(".val");
+    const input = block.querySelector("input");
+    const valDiv = block.querySelector(".val");
     input.addEventListener("input", () => {
       sliderValues[c.id] = Number(input.value);
       valDiv.textContent = input.value;
-      updateTotal();
+      updateLiveScore();
     });
-    criteriaContainer.appendChild(row);
+    criteriaContainer.appendChild(block);
   });
-  updateTotal();
+  updateLiveScore();
 }
 
-function updateTotal() {
+function updateLiveScore() {
   let sum = 0;
   let weightTotal = 0;
   criteria.forEach((c) => {
@@ -245,12 +259,8 @@ function updateTotal() {
     weightTotal += w;
   });
   const weighted = weightTotal > 0 ? sum / weightTotal : 0;
-  totalVal.textContent = weighted.toFixed(1);
+  liveScoreVal.textContent = weighted.toFixed(1);
 }
-
-cancelScoreBtn.addEventListener("click", () => {
-  scoreModal.classList.add("hidden");
-});
 
 submitScoreBtn.addEventListener("click", async () => {
   if (!currentJudge || !currentTeam || criteria.length === 0) return;
@@ -269,7 +279,7 @@ submitScoreBtn.addEventListener("click", async () => {
       additionalComments: commentsBox.value.trim(),
       updatedAt: Date.now()
     });
-    scoreModal.classList.add("hidden");
+    closeScorecard();
   } catch (e) {
     console.error(e);
     scoreErr.textContent = "Couldn't save your score. Check your connection and try again.";

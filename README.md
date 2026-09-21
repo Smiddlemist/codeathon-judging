@@ -1,17 +1,21 @@
 # Code-A-Thon Judging App
 
-A simple website for judging a Code-A-Thon: judges score each team on 5
-criteria (0–10 each), and an admin console shows live results, manages
-teams/judges, and can reset scores.
+A simple website for judging a Code-A-Thon: judges log in with their own
+account and score each team across a weighted rubric, and an admin console
+shows live results, manages teams/judges/categories, and can reset scores.
 
-- **Judge page** (`judge.html`) — a judge picks their name, sees all teams,
-  and scores each one. Scores can be edited any time before the event ends.
+- **Judge page** (`judge.html`) — each judge signs in with their own email
+  and password, sees all teams, and scores each one on a full-page
+  scorecard with weighted categories and written feedback fields. Scores
+  can be edited any time before the event ends.
 - **Admin page** (`admin.html`) — password-protected. Shows a live
-  leaderboard (average score per team), a judge-coverage matrix (who has
-  scored whom), team management, judge management, and score resets.
+  leaderboard (weighted score per team, with a click-through detail view
+  of every judge's notes), a judge-coverage matrix, team management, judge
+  management (including creating their logins), scoring-category
+  management with weights and descriptions, and score resets.
 
 No backend server is needed — it's a static site that talks directly to
-Firebase (Firestore for data, Firebase Auth for login).
+Firebase (Firestore for data, Firebase Auth for every login).
 
 ---
 
@@ -21,11 +25,12 @@ Firebase (Firestore for data, Firebase Auth for login).
 2. **Build → Firestore Database → Create database.** Start in **production
    mode** (we'll paste in our own rules below). Pick any region.
 3. **Build → Authentication → Get started.**
-   - Under **Sign-in method**, enable **Anonymous** (this is what lets
-     judges use the app without creating individual accounts).
-   - Also enable **Email/Password** (this is only used for the admin login).
+   - Enable **Email/Password** (this is used for both the admin login and
+     every judge's login).
    - Under **Users**, click **Add user** and create ONE user — this is the
      admin account. Remember the email + password you set.
+   - Judge accounts are NOT created here manually — the admin console
+     creates those for you (see "Adding judges" below).
 4. **Project settings (gear icon) → General → Your apps → Add app → Web (`</>`).**
    Give it any nickname, you don't need Firebase Hosting. Copy the
    `firebaseConfig` object it shows you.
@@ -39,7 +44,7 @@ Open `firebase-init.js` and:
   step 1.3.
 
 ```js
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: "...",
   authDomain: "...",
   projectId: "...",
@@ -75,6 +80,7 @@ service cloud.firestore {
     }
 
     match /judges/{judgeId} {
+      // judgeId here IS the judge's Firebase Auth UID.
       allow read: if isSignedIn();
       allow write: if isAdmin();
     }
@@ -86,10 +92,10 @@ service cloud.firestore {
 
     match /scores/{scoreId} {
       allow read: if isSignedIn();
-      // scoreId is always "<judgeId>_<teamId>" — this stops a client from
-      // writing a score under someone else's judgeId.
+      // Each judge can only write scores under their OWN uid -- this is
+      // what actually stops one judge from submitting as another.
       allow create, update: if isSignedIn() &&
-        request.resource.data.judgeId == scoreId.split('_')[0];
+        request.resource.data.judgeId == request.auth.uid;
       allow delete: if isAdmin();
     }
   }
@@ -98,13 +104,10 @@ service cloud.firestore {
 
 Click **Publish**.
 
-> **Security note:** Judges sign in anonymously and simply pick their name
-> from a list — there's no individual judge password. This keeps things
-> quick for a live event with a small, trusted group of judges, but it does
-> mean any judge could technically pick someone else's name from the
-> dropdown. If you need to guarantee only judge X can submit as judge X,
-> the app would need per-judge passwords (a bit more setup) — happy to add
-> that if you want stronger guarantees.
+Because each judge now has a real login tied to their own Firebase Auth
+UID, and that UID is what the rule above checks, a judge can never submit
+a score under anyone else's name — this closes the gap that existed with
+the earlier "pick your name from a list" version.
 
 ## 4. Test locally (optional but recommended)
 
@@ -139,15 +142,24 @@ yourself.
 ## 6. Running the event
 
 **Before judging starts (as admin):**
-1. Go to the Admin Console → **Judges** tab → add each judge by name (10–15
-   names).
-2. Go to the **Teams** tab → add each team's name and team lead (10–20
+1. Go to the Admin Console → **Categories** tab → confirm your scoring
+   rubric is set up the way you want (add/edit/reorder as needed).
+2. Go to the **Judges** tab → add each judge by name + email (10–15
+   people). Each one gets a password-setup email immediately — let them
+   know to check for it (and their spam folder) before the event starts,
+   and to set their password ahead of time rather than at the podium.
+3. Go to the **Teams** tab → add each team's name and team lead (10–20
    teams).
 
 **During judging:**
-- Send judges the link to `judge.html`. Each judge picks their name once
-  (it's remembered in their browser after that) and scores each team as
-  they present. Scores save instantly and can be edited any time.
+- Send judges the link to `judge.html`. Each judge signs in once with
+  their email and password — after that, their browser stays signed in
+  (they won't need to log in again unless they explicitly sign out or
+  switch devices) — and scores each team on its own full page as they
+  present. Scores save instantly and can be edited any time.
+- If a judge forgets their password, they can use **"Forgot your
+  password?"** on the login screen themselves, or you can click **"Resend
+  password email"** next to their name in the admin Judges tab.
 - Watch the **Leaderboard** and **Judge Coverage** tabs on the Admin
   Console update live as scores come in — the coverage matrix is a quick
   way to see which judges still need to score which teams.
@@ -155,8 +167,10 @@ yourself.
 **If something needs correcting:**
 - **Reset Scores** tab lets you wipe all scores, just one judge's scores, or
   just one team's scores.
-- **Teams/Judges** tabs let you remove a team or judge (removing a team also
-  deletes its scores).
+- **Teams/Judges** tabs let you remove a team or deactivate/remove a judge.
+  Deactivating a judge instantly locks them out of `judge.html` without
+  deleting their scoring history — better than removing outright unless
+  you're sure you won't need to reactivate them.
 
 ## Scoring categories and weights
 
@@ -229,6 +243,17 @@ category's average) as a spreadsheet-ready file — handy for archiving
 results or sharing with sponsors/organizers who don't need Admin Console
 access.
 
+## Judge logins, under the hood
+
+Each judge gets a real Firebase Auth account (not just a name picked from
+a list), which is what lets the security rules guarantee a judge can only
+ever submit scores as themselves. When you add a judge in the admin
+console, the app briefly spins up a second, invisible Firebase connection
+just to create that login — this is a standard technique for client-only
+apps (no backend server) to create new accounts without accidentally
+signing the admin out of their own session. You won't see anything of
+this happen; it's covered in `admin.js` if you're curious.
+
 ## Ideas for later (not built yet)
 
 A few things that would be reasonable next steps if you want them —
@@ -237,9 +262,6 @@ just ask and I can add any of these:
 - **Lock scoring after a deadline.** A toggle in the admin console that
   closes the judge scorecard once judging time is up, so no more edits can
   sneak in while you're tallying results.
-- **Per-judge PINs or logins.** Right now any judge can pick any name from
-  the dropdown (see the security note in Stage 3 above). Real per-judge
-  credentials would close that gap if it matters for your event.
 - **Randomized team order per judge.** Currently every judge sees teams in
   the same (alphabetical) order, which can subtly bias later-viewed teams.
   Shuffling the order per judge (consistently, so it doesn't reshuffle

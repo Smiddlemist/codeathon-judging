@@ -3,8 +3,10 @@
 // 1. Go to https://console.firebase.google.com -> create a project
 // 2. Project Settings -> General -> "Your apps" -> Add app -> Web (</>)
 // 3. Copy the config object it gives you and paste the values below
-// 4. Enable Authentication -> Sign-in method -> turn ON "Anonymous"
-// 5. Enable Authentication -> Sign-in method -> turn ON "Email/Password"
+// 4. Authentication -> Sign-in method -> turn ON "Email/Password"
+//    (this is used for BOTH the admin login and every judge's login)
+// 5. Authentication -> Templates -> check the "Password reset" email
+//    template looks right (Firebase's default is fine as-is)
 // 6. Authentication -> Users -> Add user -> use the SAME email you put
 //    in ADMIN_EMAIL below, pick any password (this is the admin login)
 // 7. Firestore Database -> Create database -> start in production mode
@@ -14,14 +16,18 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
 import {
   getAuth,
-  signInAnonymously,
   signInWithEmailAndPassword,
+  sendPasswordResetEmail,
   onAuthStateChanged,
   signOut
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 
-const firebaseConfig = {
+// Exported (not just used locally) because the admin page needs it again to
+// spin up a second, throwaway Firebase app instance when creating judge
+// accounts -- that's how it can create a new login for a judge without
+// accidentally signing itself out. See the "secondary app" note in admin.js.
+export const firebaseConfig = {
   apiKey: "AIzaSyBzeJSdAqHr_VSjqdPdbTy-hszKrIAUpSQ",
   authDomain: "codeathon-judging.firebaseapp.com",
   projectId: "codeathon-judging",
@@ -98,8 +104,8 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 
 export {
-  signInAnonymously,
   signInWithEmailAndPassword,
+  sendPasswordResetEmail,
   onAuthStateChanged,
   signOut
 };

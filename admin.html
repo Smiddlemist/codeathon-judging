@@ -103,17 +103,20 @@
     <div class="tab-panel" id="tab-judges">
       <div class="card">
         <h2 style="margin-top:0;">Add a judge</h2>
+        <p class="muted" style="font-size:13px;">This creates the judge a real login. They'll get an email to set their own password, then sign in at judge.html with their email + that password.</p>
         <div class="row">
           <div style="flex:1;"><label>Judge name</label><input id="newJudgeName" placeholder="e.g. Alex Kim" /></div>
+          <div style="flex:1;"><label>Email</label><input id="newJudgeEmail" type="email" placeholder="alex.kim@example.com" /></div>
         </div>
         <button id="addJudgeBtn" class="btn" style="margin-top:16px;">Add judge</button>
         <div id="judgeErr" class="err hidden"></div>
+        <div id="judgeOk" class="ok-msg hidden"></div>
       </div>
       <div class="card">
         <h2 style="margin-top:0;">All judges</h2>
         <div class="table-scroll">
           <table id="judgesTable">
-            <thead><tr><th>Judge</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Judge</th><th>Email</th><th>Status</th><th></th></tr></thead>
             <tbody></tbody>
           </table>
         </div>

@@ -1,9 +1,13 @@
 import {
-  auth, db, ADMIN_EMAIL, DEFAULT_CRITERIA,
-  signInWithEmailAndPassword, onAuthStateChanged, signOut
+  auth, db, ADMIN_EMAIL, DEFAULT_CRITERIA, firebaseConfig,
+  signInWithEmailAndPassword, sendPasswordResetEmail, onAuthStateChanged, signOut
 } from "./firebase-init.js";
+import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
 import {
-  collection, doc, addDoc, deleteDoc, updateDoc, onSnapshot, query, orderBy,
+  getAuth, createUserWithEmailAndPassword, signOut as secondarySignOut
+} from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
+import {
+  collection, doc, addDoc, setDoc, deleteDoc, updateDoc, onSnapshot, query, orderBy,
   writeBatch, getDocs
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 
@@ -316,22 +320,58 @@ function renderTeamsTable() {
 }
 
 // ---------- Judges CRUD ----------
+// Creating a judge means creating them a real Firebase Auth login. The
+// client SDK's createUserWithEmailAndPassword() normally signs in AS the
+// new user, which would kick the admin out of their own session -- so we
+// spin up a second, throwaway Firebase app instance just for this one
+// call, then tear it down immediately. The admin's own session (on the
+// primary `auth` instance) is never touched.
+async function createJudgeAccount(name, email) {
+  const tempPassword = crypto.randomUUID(); // never shown/used -- the judge sets their own via email
+  const secondaryApp = initializeApp(firebaseConfig, "judge-creator-" + Date.now());
+  const secondaryAuth = getAuth(secondaryApp);
+  try {
+    const cred = await createUserWithEmailAndPassword(secondaryAuth, email, tempPassword);
+    const uid = cred.user.uid;
+    await secondarySignOut(secondaryAuth);
+    await setDoc(doc(db, "judges", uid), { name, email, active: true, createdAt: Date.now() });
+    await sendPasswordResetEmail(auth, email); // lets the judge set their own password
+    return uid;
+  } finally {
+    await deleteApp(secondaryApp);
+  }
+}
+
 document.getElementById("addJudgeBtn").addEventListener("click", async () => {
   const nameEl = document.getElementById("newJudgeName");
+  const emailEl = document.getElementById("newJudgeEmail");
   const errEl = document.getElementById("judgeErr");
+  const okEl = document.getElementById("judgeOk");
   errEl.classList.add("hidden");
+  okEl.classList.add("hidden");
   const name = nameEl.value.trim();
-  if (!name) {
-    errEl.textContent = "Judge name is required.";
+  const email = emailEl.value.trim();
+  if (!name || !email) {
+    errEl.textContent = "Judge name and email are both required.";
     errEl.classList.remove("hidden");
     return;
   }
+  const addBtn = document.getElementById("addJudgeBtn");
+  addBtn.disabled = true;
   try {
-    await addDoc(collection(db, "judges"), { name, active: true, createdAt: Date.now() });
+    await createJudgeAccount(name, email);
     nameEl.value = "";
+    emailEl.value = "";
+    okEl.textContent = `Judge account created for ${name}. A password-setup email was sent to ${email} -- ask them to check their inbox (and spam folder).`;
+    okEl.classList.remove("hidden");
   } catch (e) {
-    errEl.textContent = "Failed to add judge.";
+    console.error(e);
+    errEl.textContent = e.code === "auth/email-already-in-use"
+      ? "That email already has a judge account."
+      : "Failed to create judge account.";
     errEl.classList.remove("hidden");
+  } finally {
+    addBtn.disabled = false;
   }
 });
 
@@ -339,14 +379,32 @@ function renderJudgesTable() {
   const tbody = document.querySelector("#judgesTable tbody");
   tbody.innerHTML = "";
   judges.forEach((j) => {
+    const isActive = j.active !== false;
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${escapeHtml(j.name)}</td>
-      <td>${j.active === false ? '<span class="muted">Inactive</span>' : "Active"}</td>
-      <td><button class="btn danger small">Remove</button></td>
+      <td class="muted">${escapeHtml(j.email || "—")}</td>
+      <td><span class="status-badge ${isActive ? "active" : "inactive"}">${isActive ? "Active" : "Deactivated"}</span></td>
+      <td class="row">
+        <button class="btn secondary small resendBtn">Resend password email</button>
+        <button class="btn warn small toggleActiveBtn">${isActive ? "Deactivate" : "Reactivate"}</button>
+        <button class="btn danger small removeBtn">Remove</button>
+      </td>
     `;
-    tr.querySelector("button").addEventListener("click", async () => {
-      if (!confirm(`Remove judge "${j.name}"? Their submitted scores will remain unless you reset them separately.`)) return;
+    tr.querySelector(".resendBtn").addEventListener("click", async () => {
+      if (!j.email) { alert("This judge has no email on file."); return; }
+      try {
+        await sendPasswordResetEmail(auth, j.email);
+        alert(`Password setup/reset email sent to ${j.email}.`);
+      } catch (e) {
+        alert("Couldn't send the email. Check the address is correct.");
+      }
+    });
+    tr.querySelector(".toggleActiveBtn").addEventListener("click", async () => {
+      await updateDoc(doc(db, "judges", j.id), { active: !isActive });
+    });
+    tr.querySelector(".removeBtn").addEventListener("click", async () => {
+      if (!confirm(`Remove judge "${j.name}"? Their submitted scores will remain unless you reset them separately. Their login will stop working immediately.`)) return;
       await deleteDoc(doc(db, "judges", j.id));
     });
     tbody.appendChild(tr);
