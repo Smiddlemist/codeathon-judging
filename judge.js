@@ -144,7 +144,16 @@ onAuthStateChanged(auth, async (user) => {
 
 window.addEventListener("online", flushPendingSaves);
 
+// Auto-save the current scorecard as a local draft the moment the judge leaves it:
+// switching tabs/apps, closing the tab, or navigating away. This intentionally does
+// NOT save on every keystroke — only when they actually leave — so it stays out of
+// the way while scoring and still catches you before anything is lost.
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) saveDraftLocally();
+});
+window.addEventListener("pagehide", saveDraftLocally);
 window.addEventListener("beforeunload", (e) => {
+  saveDraftLocally();
   if (isDirty()) {
     e.preventDefault();
     e.returnValue = "";
@@ -249,12 +258,6 @@ function clearDraft(judgeId, teamId) {
   try {
     localStorage.removeItem(draftKey(judgeId, teamId));
   } catch (e) {}
-}
-
-let draftSaveTimer = null;
-function scheduleDraftSave() {
-  clearTimeout(draftSaveTimer);
-  draftSaveTimer = setTimeout(saveDraftLocally, 400);
 }
 
 // ---------- Pending (offline) saves ----------
@@ -485,7 +488,6 @@ function renderCriteria() {
       block.classList.remove("untouched-error");
       updateLiveScore();
       refreshDirtyIndicator();
-      scheduleDraftSave();
     });
 
     valBtn.addEventListener("click", () => makeValueEditable(block, c.id, valBtn, slider));
@@ -533,7 +535,6 @@ function makeValueEditable(block, key, valBtn, slider) {
     input.replaceWith(valBtn);
     updateLiveScore();
     refreshDirtyIndicator();
-    scheduleDraftSave();
   }
 
   input.addEventListener("blur", commit);
@@ -557,10 +558,7 @@ function setRing(weighted) {
 }
 
 [strengthsBox, improvementsBox, commentsBox].forEach((el) => {
-  el.addEventListener("input", () => {
-    refreshDirtyIndicator();
-    scheduleDraftSave();
-  });
+  el.addEventListener("input", refreshDirtyIndicator);
 });
 
 submitScoreBtn.addEventListener("click", async () => {
