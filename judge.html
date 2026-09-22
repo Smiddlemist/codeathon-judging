@@ -3,34 +3,54 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Judge | Code-A-Thon</title>
+<title>Judge | Sundt Code-A-Thon</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@500;600&family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="judge-theme.css" />
 </head>
-<body>
+<body class="judge-theme">
+
+<!-- Event poster splash: shown briefly right after a judge signs in -->
+<div id="splashScreen" class="splash-overlay hidden" role="dialog" aria-label="Code-A-Thon event poster">
+  <img src="codeathon-poster.png" alt="Code-A-Thon: Build, code, vibe, repeat. October 20th 2026, 7:30am to 4:00pm, KAPBCS Training Center." />
+  <div class="splash-hint">Tap anywhere to continue</div>
+</div>
 
 <!-- Login -->
 <div id="loginScreen" class="center-screen">
   <div class="card landing-card">
-    <div class="logo">👩‍⚖️</div>
-    <h1>Judge Sign In</h1>
+    <div class="sundt-mark" aria-hidden="true">S</div>
+    <h1>Judge sign in</h1>
     <p>Use the email and password set up for you by the event admin.</p>
+
     <label for="emailInput">Email</label>
-    <input id="emailInput" type="email" placeholder="you@example.com" />
+    <input id="emailInput" type="email" placeholder="you@sundt.com" autocomplete="username" />
+
     <label for="passInput">Password</label>
-    <input id="passInput" type="password" placeholder="••••••••" />
+    <input id="passInput" type="password" placeholder="••••••••" autocomplete="current-password" />
+
     <button id="loginBtn" class="btn" style="width:100%;margin-top:16px;">Sign in</button>
     <div id="loginErr" class="err hidden"></div>
+
     <p style="margin-top:14px;">
       <button id="forgotBtn" class="link-btn">Forgot your password?</button>
     </p>
-    <p style="margin-top:6px;"><a href="index.html">← Back home</a></p>
+    <p style="margin-top:6px;"><a href="index.html">&larr; Back home</a></p>
   </div>
 </div>
 
 <!-- Main judge app -->
 <div id="judgeApp" class="hidden">
   <header class="top">
-    <h1>👩‍⚖️ Judge Scorecard</h1>
+    <div class="brand-block">
+      <div class="sundt-mark small" aria-hidden="true">S</div>
+      <div class="brand-text">
+        <div class="brand-title">Sundt code-a-thon</div>
+        <div class="brand-subtitle">Judge scorecard</div>
+      </div>
+    </div>
     <div class="row">
       <span id="judgeBadge" class="pill"></span>
       <button id="signOutBtn" class="btn secondary small">Sign out</button>
@@ -38,59 +58,90 @@
     </div>
   </header>
 
-  <div class="wrap">
-    <!-- Team list view -->
-    <div id="teamsView">
-      <div class="card row between">
-        <div>
-          <div style="font-weight:700;font-size:16px;" id="progressText">Scored 0 of 0 teams</div>
-          <div class="muted" style="font-size:12px;">Tap a team to score or edit their scorecard.</div>
-        </div>
-      </div>
-      <div id="teamsGrid" class="grid"></div>
-      <p id="noTeamsMsg" class="muted hidden">No teams have been added yet. Check back once the admin adds teams.</p>
-    </div>
+  <div class="judge-shell">
 
-    <!-- Full-page scorecard view -->
-    <div id="scorecardView" class="hidden">
-      <div class="scorecard-topbar">
-        <button id="backToTeamsBtn" class="btn secondary small">← Back to Teams</button>
-        <div class="scorecard-team-info">
-          <div class="name" id="scTeamName"></div>
-          <div class="lead" id="scTeamLead"></div>
-        </div>
-        <div class="scorecard-live-score">
-          <div class="num" id="liveScoreVal">0.0</div>
-          <div class="lbl">Weighted / 10</div>
+    <!-- Left rail: team list, always visible -->
+    <aside class="teams-rail">
+      <div class="rail-header">
+        <div id="progressText">Scored 0 of 0 teams</div>
+        <div class="muted rail-hint">Select a team to score or edit.</div>
+      </div>
+      <div id="teamsList" class="teams-list"></div>
+      <p id="noTeamsMsg" class="muted hidden" style="padding:0 16px;">No teams have been added yet. Check back once the admin adds teams.</p>
+    </aside>
+
+    <!-- Right panel: empty state or active scorecard -->
+    <main class="scorecard-panel">
+
+      <div id="emptyState" class="empty-state">
+        <div class="empty-state-inner">
+          <div class="sundt-mark large" aria-hidden="true">S</div>
+          <h2>Select a team to begin</h2>
+          <p class="muted">Choose a team from the list on the left to score them.</p>
         </div>
       </div>
 
-      <div class="scorecard-grid">
-        <div class="card">
-          <h2 style="margin-top:0;">Scoring Criteria</h2>
-          <div id="criteriaContainer"></div>
-          <p id="noCriteriaMsg" class="muted hidden">No scoring categories have been set up yet. Ask the admin to add some in the Admin Console.</p>
+      <div id="scorecardContent" class="hidden">
+
+        <div id="draftBanner" class="draft-banner hidden">
+          <span id="draftBannerText"></span>
+          <button type="button" id="discardDraftBtn" class="link-btn">Discard draft</button>
         </div>
 
-        <div class="card">
-          <h2 style="margin-top:0;">Notes</h2>
-          <label for="strengthsBox">Strengths</label>
-          <textarea id="strengthsBox" placeholder="What did this team do well?"></textarea>
-          <label for="improvementsBox">Areas to improve</label>
-          <textarea id="improvementsBox" placeholder="What could be better?"></textarea>
-          <label for="commentsBox">Additional comments (optional)</label>
-          <textarea id="commentsBox" placeholder="Anything else worth noting..."></textarea>
+        <div class="scorecard-header">
+          <div class="scorecard-team-info">
+            <div class="lead" id="scTeamLead"></div>
+            <div class="name" id="scTeamName"></div>
+          </div>
+          <div class="score-ring-wrap">
+            <svg width="64" height="64" viewBox="0 0 64 64" class="score-ring" aria-hidden="true">
+              <circle cx="32" cy="32" r="27" class="ring-track" />
+              <circle cx="32" cy="32" r="27" class="ring-fill" id="ringFill" />
+            </svg>
+            <div class="score-ring-num" id="liveScoreVal">0.0</div>
+          </div>
         </div>
-      </div>
 
-      <div class="scorecard-actionbar">
-        <div id="scoreErr" class="err hidden"></div>
-        <div class="row" style="margin-left:auto;">
-          <button id="cancelScoreBtn" class="btn secondary">Cancel</button>
-          <button id="submitScoreBtn" class="btn">Save Score</button>
+        <div class="scorecard-body">
+
+          <section class="sc-section">
+            <div class="sc-section-head">
+              <h2>Scoring criteria</h2>
+              <span id="unsavedTag" class="unsaved-tag hidden">Unsaved changes</span>
+            </div>
+            <div id="criteriaContainer" class="criteria-grid"></div>
+            <p id="noCriteriaMsg" class="muted hidden">No scoring categories have been set up yet. Ask the admin to add some in the Admin Console.</p>
+          </section>
+
+          <section class="sc-section">
+            <h2>Notes</h2>
+            <div class="notes-grid">
+              <div>
+                <label for="strengthsBox">Strengths</label>
+                <textarea id="strengthsBox" placeholder="What did this team do well?"></textarea>
+              </div>
+              <div>
+                <label for="improvementsBox">Areas to improve</label>
+                <textarea id="improvementsBox" placeholder="What could be better?"></textarea>
+              </div>
+            </div>
+            <label for="commentsBox">Additional comments (optional)</label>
+            <textarea id="commentsBox" placeholder="Anything else worth noting..."></textarea>
+          </section>
+
         </div>
+
+        <div class="scorecard-actionbar">
+          <div id="scoreErr" class="err hidden"></div>
+          <div id="scoreOk" class="ok-msg hidden"></div>
+          <div class="row" style="margin-left:auto;">
+            <button id="cancelScoreBtn" class="btn secondary">Cancel</button>
+            <button id="submitScoreBtn" class="btn">Save score</button>
+          </div>
+        </div>
+
       </div>
-    </div>
+    </main>
   </div>
 </div>
 

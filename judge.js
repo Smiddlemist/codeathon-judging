@@ -6,6 +6,7 @@ import {
   collection, doc, getDoc, setDoc, onSnapshot, query, orderBy
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 
+// ---------- element refs ----------
 const loginScreen = document.getElementById("loginScreen");
 const emailInput = document.getElementById("emailInput");
 const passInput = document.getElementById("passInput");
@@ -13,20 +14,26 @@ const loginBtn = document.getElementById("loginBtn");
 const loginErr = document.getElementById("loginErr");
 const forgotBtn = document.getElementById("forgotBtn");
 
+const splashScreen = document.getElementById("splashScreen");
+
 const judgeApp = document.getElementById("judgeApp");
 const judgeBadge = document.getElementById("judgeBadge");
 const signOutBtn = document.getElementById("signOutBtn");
 
-const teamsView = document.getElementById("teamsView");
-const teamsGrid = document.getElementById("teamsGrid");
+const teamsList = document.getElementById("teamsList");
 const noTeamsMsg = document.getElementById("noTeamsMsg");
 const progressText = document.getElementById("progressText");
 
-const scorecardView = document.getElementById("scorecardView");
-const backToTeamsBtn = document.getElementById("backToTeamsBtn");
+const emptyState = document.getElementById("emptyState");
+const scorecardContent = document.getElementById("scorecardContent");
+const draftBanner = document.getElementById("draftBanner");
+const draftBannerText = document.getElementById("draftBannerText");
+const discardDraftBtn = document.getElementById("discardDraftBtn");
+
 const scTeamName = document.getElementById("scTeamName");
 const scTeamLead = document.getElementById("scTeamLead");
 const liveScoreVal = document.getElementById("liveScoreVal");
+const ringFill = document.getElementById("ringFill");
 const criteriaContainer = document.getElementById("criteriaContainer");
 const noCriteriaMsg = document.getElementById("noCriteriaMsg");
 const strengthsBox = document.getElementById("strengthsBox");
@@ -35,13 +42,42 @@ const commentsBox = document.getElementById("commentsBox");
 const cancelScoreBtn = document.getElementById("cancelScoreBtn");
 const submitScoreBtn = document.getElementById("submitScoreBtn");
 const scoreErr = document.getElementById("scoreErr");
+const scoreOk = document.getElementById("scoreOk");
+const unsavedTag = document.getElementById("unsavedTag");
 
-let currentJudge = null; // { id: uid, name, email }
+const RING_CIRCUMFERENCE = 2 * Math.PI * 27; // r=27, matches the SVG circles
+
+// ---------- Event poster splash ----------
+// Shown once per browser tab session, right after a judge signs in: a few
+// seconds of the event poster, dismissible early by tapping anywhere.
+let splashShown = false;
+function showSplashOnce() {
+  if (splashShown) return;
+  try {
+    if (sessionStorage.getItem("codeathonSplashShown")) { splashShown = true; return; }
+  } catch (e) {
+    // sessionStorage unavailable — fine, it'll just show every time in that case.
+  }
+  splashShown = true;
+  splashScreen.classList.remove("hidden");
+  const dismiss = () => {
+    splashScreen.classList.add("fade-out");
+    setTimeout(() => splashScreen.classList.add("hidden"), 400);
+    try { sessionStorage.setItem("codeathonSplashShown", "1"); } catch (e) {}
+  };
+  splashScreen.addEventListener("click", dismiss, { once: true });
+  setTimeout(dismiss, 3000);
+}
+
+// ---------- state ----------
+let currentJudge = null; // { id: uid, name, email, ... }
 let teams = [];
 let criteria = [];
-let myScores = {};
+let myScores = {};        // teamId -> saved score doc
 let currentTeam = null;
-let sliderValues = {};
+let sliderValues = {};    // criterionId -> number | null
+let touched = {};         // criterionId -> boolean (has the judge interacted with it)
+let lastSavedSnapshot = null; // JSON string of last-saved form state, for dirty checking
 
 // ---------- Login ----------
 loginBtn.addEventListener("click", async () => {
@@ -66,14 +102,20 @@ forgotBtn.addEventListener("click", async () => {
   }
   try {
     await sendPasswordResetEmail(auth, email);
-    loginErr.classList.add("hidden");
-    alert("If that email has an account, a password reset link has been sent to it.");
   } catch (e) {
-    alert("If that email has an account, a password reset link has been sent to it.");
+    // Intentionally same message either way, so we don't reveal which emails exist.
   }
+  loginErr.classList.add("hidden");
+  alert("If that email has an account, a password reset link has been sent to it.");
 });
 
-signOutBtn.addEventListener("click", () => signOut(auth));
+signOutBtn.addEventListener("click", () => {
+  if (isDirty()) {
+    const ok = confirm("You have unsaved changes on this scorecard. Sign out anyway?");
+    if (!ok) return;
+  }
+  signOut(auth);
+});
 
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
@@ -82,7 +124,6 @@ onAuthStateChanged(auth, async (user) => {
     currentJudge = null;
     return;
   }
-  // Confirm this account is a registered, active judge.
   const judgeDocSnap = await getDoc(doc(db, "judges", user.uid));
   if (!judgeDocSnap.exists() || judgeDocSnap.data().active === false) {
     loginErr.textContent = "This account isn't set up as an active judge. Contact the event admin.";
@@ -93,17 +134,28 @@ onAuthStateChanged(auth, async (user) => {
   currentJudge = { id: user.uid, ...judgeDocSnap.data() };
   loginScreen.classList.add("hidden");
   judgeApp.classList.remove("hidden");
-  judgeBadge.textContent = "👤 " + currentJudge.name;
+  judgeBadge.textContent = "Signed in as " + currentJudge.name;
+  showSplashOnce();
   loadTeams();
   loadCriteria();
   loadMyScores();
+  flushPendingSaves();
+});
+
+window.addEventListener("online", flushPendingSaves);
+
+window.addEventListener("beforeunload", (e) => {
+  if (isDirty()) {
+    e.preventDefault();
+    e.returnValue = "";
+  }
 });
 
 // ---------- Live data ----------
 function loadTeams() {
   onSnapshot(query(collection(db, "teams"), orderBy("name")), (snap) => {
     teams = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    renderTeams();
+    renderTeamsRail();
   });
 }
 
@@ -112,7 +164,9 @@ function loadCriteria() {
     criteria = snap.docs
       .map((d) => ({ id: d.id, ...d.data() }))
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-    renderTeams();
+    renderTeamsRail();
+    // If a scorecard is already open, re-render its criteria against the new list.
+    if (currentTeam) renderCriteria();
   });
 }
 
@@ -125,7 +179,7 @@ function loadMyScores() {
         myScores[data.teamId] = data;
       }
     });
-    renderTeams();
+    renderTeamsRail();
   });
 }
 
@@ -144,10 +198,114 @@ function weightedScoreOf(scoreDoc) {
   return weightTotal > 0 ? sum / weightTotal : 0;
 }
 
-// ---------- Team list view ----------
-function renderTeams() {
+function weightedScoreOfCurrent() {
+  let sum = 0;
+  let weightTotal = 0;
+  criteria.forEach((c) => {
+    const w = c.weight ?? 1;
+    const v = sliderValues[c.id];
+    if (typeof v === "number") {
+      sum += v * w;
+      weightTotal += w;
+    }
+  });
+  return weightTotal > 0 ? sum / weightTotal : 0;
+}
+
+// ---------- Draft persistence (localStorage, per judge+team) ----------
+function draftKey(judgeId, teamId) {
+  return `codeathonDraft_${judgeId}_${teamId}`;
+}
+function pendingKey(scoreId) {
+  return `codeathonPending_${scoreId}`;
+}
+
+function saveDraftLocally() {
+  if (!currentJudge || !currentTeam) return;
+  const draft = {
+    criteria: { ...sliderValues },
+    strengths: strengthsBox.value,
+    improvements: improvementsBox.value,
+    additionalComments: commentsBox.value,
+    savedAt: Date.now()
+  };
+  try {
+    localStorage.setItem(draftKey(currentJudge.id, currentTeam.id), JSON.stringify(draft));
+  } catch (e) {
+    // localStorage unavailable (private browsing, quota) — draft recovery just won't work this time.
+  }
+}
+
+function readDraft(judgeId, teamId) {
+  try {
+    const raw = localStorage.getItem(draftKey(judgeId, teamId));
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function clearDraft(judgeId, teamId) {
+  try {
+    localStorage.removeItem(draftKey(judgeId, teamId));
+  } catch (e) {}
+}
+
+let draftSaveTimer = null;
+function scheduleDraftSave() {
+  clearTimeout(draftSaveTimer);
+  draftSaveTimer = setTimeout(saveDraftLocally, 400);
+}
+
+// ---------- Pending (offline) saves ----------
+function flushPendingSaves() {
+  let keys;
+  try {
+    keys = Object.keys(localStorage).filter((k) => k.startsWith("codeathonPending_"));
+  } catch (e) {
+    return;
+  }
+  keys.forEach(async (key) => {
+    let payload;
+    try {
+      payload = JSON.parse(localStorage.getItem(key));
+    } catch (e) {
+      localStorage.removeItem(key);
+      return;
+    }
+    const scoreId = key.replace("codeathonPending_", "");
+    try {
+      await setDoc(doc(db, "scores", scoreId), payload);
+      localStorage.removeItem(key);
+    } catch (e) {
+      // Still offline / still failing — leave it queued, we'll retry next time.
+    }
+  });
+}
+
+// ---------- Dirty-state tracking ----------
+function currentFormSnapshot() {
+  return JSON.stringify({
+    criteria: { ...sliderValues },
+    strengths: strengthsBox.value,
+    improvements: improvementsBox.value,
+    additionalComments: commentsBox.value
+  });
+}
+
+function isDirty() {
+  if (!currentTeam) return false;
+  return currentFormSnapshot() !== lastSavedSnapshot;
+}
+
+function refreshDirtyIndicator() {
+  unsavedTag.classList.toggle("hidden", !isDirty());
+}
+
+// ---------- Team rail ----------
+function renderTeamsRail() {
   if (!currentJudge) return;
-  teamsGrid.innerHTML = "";
+  teamsList.innerHTML = "";
   if (teams.length === 0) {
     noTeamsMsg.classList.remove("hidden");
     progressText.textContent = "No teams yet";
@@ -158,61 +316,125 @@ function renderTeams() {
   let scoredCount = 0;
   teams.forEach((team) => {
     const existing = myScores[team.id];
+    const draft = !existing ? readDraft(currentJudge.id, team.id) : null;
     if (existing) scoredCount++;
-    const weighted = existing ? weightedScoreOf(existing).toFixed(1) : null;
 
-    const card = document.createElement("div");
-    card.className = "card team-card";
-    card.innerHTML = `
-      <div class="team-name">${escapeHtml(team.name)}</div>
-      <div class="team-lead">Lead: ${escapeHtml(team.lead || "—")}</div>
-      ${
-        existing
-          ? `<span class="score-badge">✅ Scored — ${weighted}/10</span>`
-          : `<span class="score-badge pending">⏳ Not scored yet</span>`
-      }
-      <button class="btn ${existing ? "secondary" : ""}" style="margin-top:8px;">
-        ${existing ? "Edit Score" : "Score this team"}
-      </button>
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "rail-item" + (existing ? " scored" : draft ? " has-draft" : "");
+    if (currentTeam && currentTeam.id === team.id) item.classList.add("active");
+
+    let statusLabel;
+    if (existing) statusLabel = weightedScoreOf(existing).toFixed(1);
+    else if (draft) statusLabel = "draft";
+    else statusLabel = "unscored";
+
+    item.innerHTML = `
+      <span class="rail-team-name">${escapeHtml(team.name)}</span>
+      <span class="rail-status">${statusLabel}</span>
     `;
-    card.querySelector("button").addEventListener("click", () => openScorecard(team));
-    teamsGrid.appendChild(card);
+    item.addEventListener("click", () => openScorecard(team));
+    teamsList.appendChild(item);
   });
 
   progressText.textContent = `Scored ${scoredCount} of ${teams.length} teams`;
 }
 
-// ---------- Full-page scorecard ----------
+// ---------- Scorecard ----------
 function openScorecard(team) {
+  if (currentTeam && currentTeam.id !== team.id && isDirty()) {
+    const ok = confirm("You have unsaved changes for the current team. Switch teams anyway? (Your changes are auto-saved as a draft on this device.)");
+    if (!ok) return;
+  }
+  saveDraftLocally(); // preserve whatever we were doing on the previous team
+
   currentTeam = team;
   const existing = myScores[team.id];
+  const draft = !existing ? readDraft(currentJudge.id, team.id) : null;
+
   sliderValues = {};
+  touched = {};
   criteria.forEach((c) => {
-    const existingVal = existing && existing.criteria ? existing.criteria[c.id] : undefined;
-    sliderValues[c.id] = typeof existingVal === "number" ? existingVal : 5;
+    const savedVal = existing && existing.criteria ? existing.criteria[c.id] : undefined;
+    const draftVal = draft && draft.criteria ? draft.criteria[c.id] : undefined;
+    if (typeof savedVal === "number") {
+      sliderValues[c.id] = savedVal;
+      touched[c.id] = true;
+    } else if (typeof draftVal === "number") {
+      sliderValues[c.id] = draftVal;
+      touched[c.id] = true;
+    } else {
+      sliderValues[c.id] = null;
+      touched[c.id] = false;
+    }
   });
 
   scTeamName.textContent = team.name;
-  scTeamLead.textContent = "Lead: " + (team.lead || "—");
-  strengthsBox.value = existing ? existing.strengths || "" : "";
-  improvementsBox.value = existing ? existing.improvements || "" : "";
-  commentsBox.value = existing ? existing.additionalComments || "" : "";
+  scTeamLead.textContent = "Lead: " + (team.lead || "\u2014");
+  strengthsBox.value = existing ? existing.strengths || "" : draft ? draft.strengths || "" : "";
+  improvementsBox.value = existing ? existing.improvements || "" : draft ? draft.improvements || "" : "";
+  commentsBox.value = existing ? existing.additionalComments || "" : draft ? draft.additionalComments || "" : "";
   scoreErr.classList.add("hidden");
+  scoreOk.classList.add("hidden");
+
+  if (!existing && draft) {
+    const when = new Date(draft.savedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    draftBannerText.textContent = `Restored an unsaved draft from ${when} on this device.`;
+    draftBanner.classList.remove("hidden");
+  } else {
+    draftBanner.classList.add("hidden");
+  }
+
   renderCriteria();
 
-  teamsView.classList.add("hidden");
-  scorecardView.classList.remove("hidden");
-  window.scrollTo({ top: 0, behavior: "auto" });
+  // Baseline for the "unsaved changes" comparison: if this team already has a saved
+  // score, the baseline is those saved values. Otherwise the baseline is "nothing
+  // entered yet" — even when we've just restored a local draft into the visible
+  // fields above, that draft hasn't been saved to Firestore, so it should read as
+  // dirty (prompting the judge to save it) rather than as a fresh, untouched form.
+  if (existing) {
+    lastSavedSnapshot = currentFormSnapshot();
+  } else {
+    const emptyCriteria = {};
+    criteria.forEach((c) => { emptyCriteria[c.id] = null; });
+    lastSavedSnapshot = JSON.stringify({
+      criteria: emptyCriteria, strengths: "", improvements: "", additionalComments: ""
+    });
+  }
+  refreshDirtyIndicator();
+
+  emptyState.classList.add("hidden");
+  scorecardContent.classList.remove("hidden");
+  renderTeamsRail(); // refresh active-highlight
+  scorecardContent.scrollTo({ top: 0, behavior: "auto" });
 }
 
-function closeScorecard() {
-  scorecardView.classList.add("hidden");
-  teamsView.classList.remove("hidden");
+function closeScorecard(persistDraft = true) {
+  if (persistDraft) saveDraftLocally();
+  scorecardContent.classList.add("hidden");
+  emptyState.classList.remove("hidden");
   currentTeam = null;
+  renderTeamsRail();
 }
 
-backToTeamsBtn.addEventListener("click", closeScorecard);
-cancelScoreBtn.addEventListener("click", closeScorecard);
+discardDraftBtn.addEventListener("click", () => {
+  if (!currentJudge || !currentTeam) return;
+  clearDraft(currentJudge.id, currentTeam.id);
+  const team = currentTeam;
+  currentTeam = null; // prevents openScorecard from re-persisting the discarded values as a new draft
+  openScorecard(team);
+});
+
+cancelScoreBtn.addEventListener("click", () => {
+  if (isDirty()) {
+    const ok = confirm("Discard your changes to this scorecard?");
+    if (!ok) return;
+    if (currentJudge && currentTeam) clearDraft(currentJudge.id, currentTeam.id);
+    closeScorecard(false);
+    return;
+  }
+  closeScorecard();
+});
 
 function renderCriteria() {
   criteriaContainer.innerHTML = "";
@@ -220,6 +442,7 @@ function renderCriteria() {
     noCriteriaMsg.classList.remove("hidden");
     submitScoreBtn.disabled = true;
     liveScoreVal.textContent = "0.0";
+    setRing(0);
     return;
   }
   noCriteriaMsg.classList.add("hidden");
@@ -228,62 +451,173 @@ function renderCriteria() {
   criteria.forEach((c) => {
     const block = document.createElement("div");
     block.className = "criterion-block";
-    const weightBadge = c.weight && c.weight !== 1 ? ` <span class="pill">weight ×${c.weight}</span>` : "";
-    const descHtml = c.description ? `<div class="crit-desc">${escapeHtml(c.description)}</div>` : "";
+    block.dataset.key = c.id;
+    const weightBadge = c.weight && c.weight !== 1 ? `<span class="pill">weight &times;${c.weight}</span>` : "";
+    const infoBtn = c.description ? `<button type="button" class="info-btn" aria-expanded="false" aria-label="Show description">i</button>` : "";
+    const descHtml = c.description ? `<div class="crit-desc hidden">${escapeHtml(c.description)}</div>` : "";
+    const val = sliderValues[c.id];
+    const displayVal = typeof val === "number" ? val : "\u2013";
+
     block.innerHTML = `
-      <div class="crit-label">${escapeHtml(c.label)}${weightBadge}</div>
+      <div class="crit-top">
+        <span class="crit-label">${escapeHtml(c.label)}</span>
+        ${weightBadge}
+        ${infoBtn}
+      </div>
       ${descHtml}
       <div class="slider-row">
-        <input type="range" min="0" max="10" step="1" value="${sliderValues[c.id]}" data-key="${c.id}" />
-        <div class="val">${sliderValues[c.id]}</div>
+        <input type="range" min="0" max="10" step="1" value="${typeof val === "number" ? val : 5}" data-key="${c.id}" class="crit-slider" />
+        <button type="button" class="crit-val${typeof val === "number" ? "" : " unscored"}" data-key="${c.id}">${displayVal}</button>
       </div>
     `;
-    const input = block.querySelector("input");
-    const valDiv = block.querySelector(".val");
-    input.addEventListener("input", () => {
-      sliderValues[c.id] = Number(input.value);
-      valDiv.textContent = input.value;
+
+    const slider = block.querySelector(".crit-slider");
+    const valBtn = block.querySelector(".crit-val");
+    const info = block.querySelector(".info-btn");
+    const desc = block.querySelector(".crit-desc");
+
+    slider.addEventListener("input", () => {
+      const n = Number(slider.value);
+      sliderValues[c.id] = n;
+      touched[c.id] = true;
+      valBtn.textContent = n;
+      valBtn.classList.remove("unscored");
+      block.classList.remove("untouched-error");
       updateLiveScore();
+      refreshDirtyIndicator();
+      scheduleDraftSave();
     });
+
+    valBtn.addEventListener("click", () => makeValueEditable(block, c.id, valBtn, slider));
+
+    if (info) {
+      info.addEventListener("click", () => {
+        const isOpen = !desc.classList.contains("hidden");
+        desc.classList.toggle("hidden", isOpen);
+        info.setAttribute("aria-expanded", String(!isOpen));
+      });
+    }
+
     criteriaContainer.appendChild(block);
   });
   updateLiveScore();
 }
 
-function updateLiveScore() {
-  let sum = 0;
-  let weightTotal = 0;
-  criteria.forEach((c) => {
-    const w = c.weight ?? 1;
-    sum += (sliderValues[c.id] ?? 0) * w;
-    weightTotal += w;
+function makeValueEditable(block, key, valBtn, slider) {
+  const input = document.createElement("input");
+  input.type = "number";
+  input.min = "0";
+  input.max = "10";
+  input.step = "1";
+  input.className = "crit-val-input";
+  input.value = typeof sliderValues[key] === "number" ? sliderValues[key] : "";
+
+  valBtn.replaceWith(input);
+  input.focus();
+  input.select();
+
+  function commit() {
+    let n = parseInt(input.value, 10);
+    if (Number.isNaN(n)) {
+      // Leave unscored if they clear it and click away.
+      input.replaceWith(valBtn);
+      return;
+    }
+    n = Math.max(0, Math.min(10, n));
+    sliderValues[key] = n;
+    touched[key] = true;
+    slider.value = n;
+    valBtn.textContent = n;
+    valBtn.classList.remove("unscored");
+    block.classList.remove("untouched-error");
+    input.replaceWith(valBtn);
+    updateLiveScore();
+    refreshDirtyIndicator();
+    scheduleDraftSave();
+  }
+
+  input.addEventListener("blur", commit);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); commit(); }
+    if (e.key === "Escape") { input.value = typeof sliderValues[key] === "number" ? sliderValues[key] : ""; input.replaceWith(valBtn); }
   });
-  const weighted = weightTotal > 0 ? sum / weightTotal : 0;
-  liveScoreVal.textContent = weighted.toFixed(1);
 }
+
+function updateLiveScore() {
+  const weighted = weightedScoreOfCurrent();
+  liveScoreVal.textContent = weighted.toFixed(1);
+  setRing(weighted);
+}
+
+function setRing(weighted) {
+  const fraction = Math.max(0, Math.min(1, weighted / 10));
+  const offset = RING_CIRCUMFERENCE * (1 - fraction);
+  ringFill.style.strokeDasharray = String(RING_CIRCUMFERENCE);
+  ringFill.style.strokeDashoffset = String(offset);
+}
+
+[strengthsBox, improvementsBox, commentsBox].forEach((el) => {
+  el.addEventListener("input", () => {
+    refreshDirtyIndicator();
+    scheduleDraftSave();
+  });
+});
 
 submitScoreBtn.addEventListener("click", async () => {
   if (!currentJudge || !currentTeam || criteria.length === 0) return;
-  submitScoreBtn.disabled = true;
+
   scoreErr.classList.add("hidden");
-  try {
-    const scoreId = `${currentJudge.id}_${currentTeam.id}`;
-    await setDoc(doc(db, "scores", scoreId), {
-      judgeId: currentJudge.id,
-      judgeName: currentJudge.name,
-      teamId: currentTeam.id,
-      teamName: currentTeam.name,
-      criteria: { ...sliderValues },
-      strengths: strengthsBox.value.trim(),
-      improvements: improvementsBox.value.trim(),
-      additionalComments: commentsBox.value.trim(),
-      updatedAt: Date.now()
+  scoreOk.classList.add("hidden");
+
+  // Validate: every criterion needs a score before we'll save.
+  const missing = criteria.filter((c) => !touched[c.id]);
+  if (missing.length > 0) {
+    document.querySelectorAll(".criterion-block").forEach((b) => b.classList.remove("untouched-error"));
+    missing.forEach((c) => {
+      const block = criteriaContainer.querySelector(`.criterion-block[data-key="${c.id}"]`);
+      if (block) block.classList.add("untouched-error");
     });
-    closeScorecard();
+    scoreErr.textContent = `Score every criterion before saving (missing: ${missing.map((c) => c.label).join(", ")}).`;
+    scoreErr.classList.remove("hidden");
+    return;
+  }
+
+  submitScoreBtn.disabled = true;
+  const scoreId = `${currentJudge.id}_${currentTeam.id}`;
+  const payload = {
+    judgeId: currentJudge.id,
+    judgeName: currentJudge.name,
+    teamId: currentTeam.id,
+    teamName: currentTeam.name,
+    criteria: { ...sliderValues },
+    strengths: strengthsBox.value.trim(),
+    improvements: improvementsBox.value.trim(),
+    additionalComments: commentsBox.value.trim(),
+    updatedAt: Date.now()
+  };
+
+  try {
+    await setDoc(doc(db, "scores", scoreId), payload);
+    clearDraft(currentJudge.id, currentTeam.id);
+    lastSavedSnapshot = currentFormSnapshot();
+    refreshDirtyIndicator();
+    draftBanner.classList.add("hidden");
+    scoreOk.textContent = "Score saved.";
+    scoreOk.classList.remove("hidden");
+    renderTeamsRail();
   } catch (e) {
     console.error(e);
-    scoreErr.textContent = "Couldn't save your score. Check your connection and try again.";
-    scoreErr.classList.remove("hidden");
+    // Offline-safe fallback: keep it locally and sync automatically once we're back online.
+    try {
+      localStorage.setItem(pendingKey(scoreId), JSON.stringify(payload));
+      lastSavedSnapshot = currentFormSnapshot();
+      refreshDirtyIndicator();
+      scoreOk.textContent = "Couldn't reach the server — saved on this device and will sync automatically once you're back online.";
+      scoreOk.classList.remove("hidden");
+    } catch (e2) {
+      scoreErr.textContent = "Couldn't save your score. Check your connection and try again.";
+      scoreErr.classList.remove("hidden");
+    }
   } finally {
     submitScoreBtn.disabled = false;
   }
