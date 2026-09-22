@@ -375,6 +375,35 @@ document.getElementById("addJudgeBtn").addEventListener("click", async () => {
   }
 });
 
+document.getElementById("removeAllJudgesBtn").addEventListener("click", async () => {
+  if (judges.length === 0) {
+    alert("There are no judges to remove.");
+    return;
+  }
+  const ok = confirm(
+    `Remove all ${judges.length} judge${judges.length === 1 ? "" : "s"}? ` +
+    `Their judge.html logins stop working immediately. Submitted scores are NOT deleted -- ` +
+    `use the Reset Scores tab separately if you also want those gone.\n\n` +
+    `Note: this removes their judge records here, but can't delete the underlying Firebase Auth ` +
+    `accounts (only the Firebase console can do that). Their email addresses will still show as ` +
+    `"in use" and can't be reused for a new judge until you remove them manually under Firebase ` +
+    `console -> Authentication -> Users.`
+  );
+  if (!ok) return;
+  await deleteAllJudges(judges);
+  alert("All judges have been removed.");
+});
+
+async function deleteAllJudges(list) {
+  const chunkSize = 400; // Firestore batches max out at 500 writes
+  for (let i = 0; i < list.length; i += chunkSize) {
+    const chunk = list.slice(i, i + chunkSize);
+    const batch = writeBatch(db);
+    chunk.forEach((j) => batch.delete(doc(db, "judges", j.id)));
+    await batch.commit();
+  }
+}
+
 function renderJudgesTable() {
   const tbody = document.querySelector("#judgesTable tbody");
   tbody.innerHTML = "";
