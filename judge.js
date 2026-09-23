@@ -528,15 +528,18 @@ function renderCriteria() {
     const info = row.querySelector(".info-btn");
     const desc = row.querySelector(".crit-desc");
 
-    for (let n = 0; n <= 10; n++) {
+    for (let n = 1; n <= 5; n++) {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "score-btn" + (val === n ? " active" : "");
       btn.textContent = String(n);
+      btn.dataset.val = String(n);
       btn.addEventListener("click", () => {
         sliderValues[c.id] = n;
         touched[c.id] = true;
-        buttonWrap.querySelectorAll(".score-btn").forEach((b, idx) => b.classList.toggle("active", idx === n));
+        buttonWrap.querySelectorAll(".score-btn").forEach((b) => {
+          b.classList.toggle("active", Number(b.dataset.val) === n);
+        });
         scoreCol.textContent = String(n);
         scoreCol.classList.remove("unscored");
         row.classList.remove("untouched-error");
@@ -567,7 +570,7 @@ function updateLiveScore() {
 }
 
 function setTotalBar(weighted) {
-  const fraction = Math.max(0, Math.min(1, weighted / 10));
+  const fraction = Math.max(0, Math.min(1, weighted / 5));
   criteriaTotalFill.style.width = (fraction * 100) + "%";
 }
 

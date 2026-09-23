@@ -96,46 +96,45 @@
         </div>
 
         <div class="scorecard-body">
+          <div class="scorecard-columns">
 
-          <section class="sc-section">
-            <div class="sc-section-head">
-              <h2>Scoring criteria</h2>
-              <span id="unsavedTag" class="unsaved-tag hidden">Unsaved changes</span>
-            </div>
-            <div class="crit-table-head">
-              <div>Category</div>
-              <div>Score</div>
-            </div>
-            <div id="criteriaContainer"></div>
-            <p id="noCriteriaMsg" class="muted hidden">No scoring categories have been set up yet. Ask the admin to add some in the Admin Console.</p>
-            <div class="criteria-total-bar">
-              <span class="criteria-total-label">Total</span>
-              <div class="criteria-total-track"><div class="criteria-total-fill" id="criteriaTotalFill"></div></div>
-              <span id="liveScoreVal" class="criteria-total-val">0.0</span><span class="criteria-total-max">/ 10</span>
-            </div>
-          </section>
+            <section class="sc-section sc-col-main">
+              <div class="sc-section-head">
+                <h2>Scoring criteria</h2>
+                <span id="unsavedTag" class="unsaved-tag hidden">Unsaved changes</span>
+              </div>
+              <p class="sc-hint">Click one score per row (1 = poor, 5 = excellent).</p>
+              <div class="crit-table-head">
+                <div>Category</div>
+                <div>Score</div>
+              </div>
+              <div id="criteriaContainer"></div>
+              <p id="noCriteriaMsg" class="muted hidden">No scoring categories have been set up yet. Ask the admin to add some in the Admin Console.</p>
+              <div class="criteria-total-bar">
+                <span class="criteria-total-label">Total</span>
+                <div class="criteria-total-track"><div class="criteria-total-fill" id="criteriaTotalFill"></div></div>
+                <span id="liveScoreVal" class="criteria-total-val">0.0</span><span class="criteria-total-max">/ 5</span>
+              </div>
+            </section>
 
-          <section class="sc-section">
-            <h2>Notes</h2>
-            <div class="notes-grid">
-              <div>
+            <div class="sc-col-side">
+              <section class="sc-section">
+                <h2>Notes</h2>
                 <label for="strengthsBox">Strengths</label>
                 <textarea id="strengthsBox" placeholder="What did this team do well?"></textarea>
-              </div>
-              <div>
                 <label for="improvementsBox">Areas to improve</label>
                 <textarea id="improvementsBox" placeholder="What could be better?"></textarea>
-              </div>
+                <label for="commentsBox">Additional comments (optional)</label>
+                <textarea id="commentsBox" placeholder="Anything else worth noting..."></textarea>
+              </section>
+
+              <section class="sc-section">
+                <h2>Nominations</h2>
+                <div id="nominationsList" class="nominations-list"></div>
+              </section>
             </div>
-            <label for="commentsBox">Additional comments (optional)</label>
-            <textarea id="commentsBox" placeholder="Anything else worth noting..."></textarea>
-          </section>
 
-          <section class="sc-section">
-            <h2>Nominations</h2>
-            <div id="nominationsList" class="nominations-list"></div>
-          </section>
-
+          </div>
         </div>
 
         <div class="scorecard-actionbar">

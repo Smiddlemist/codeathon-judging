@@ -240,7 +240,7 @@ function openTeamDetail(team) {
           <div class="card" style="margin-bottom:10px;">
             <div class="row between">
               <strong>${escapeHtml(s.judgeName || "Unknown judge")}</strong>
-              <span class="score-badge">${weighted} / 10</span>
+              <span class="score-badge">${weighted} / 5</span>
             </div>
             <div style="margin:8px 0;">${critLines}</div>
             ${nomLines ? `<div style="margin-top:4px;">${nomLines}</div>` : ""}

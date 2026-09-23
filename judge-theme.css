@@ -289,6 +289,23 @@ body.judge-theme header.top .btn.secondary:hover { background: rgba(255,255,255,
   border-radius: 999px;
 }
 
+/* ---------- two-column scorecard layout ---------- */
+
+.scorecard-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(240px, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+.sc-col-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.sc-col-main { min-width: 0; }
+
+@media (max-width: 900px) {
+  .scorecard-columns { grid-template-columns: 1fr; }
+}
+
+.sc-hint { font-size: 11.5px; color: var(--text-muted-2); margin: -4px 0 10px; }
+
 /* ---------- criteria table ---------- */
 
 .crit-table-head {
@@ -316,7 +333,7 @@ body.judge-theme header.top .btn.secondary:hover { background: rgba(255,255,255,
 .crit-row:last-of-type { border-radius: 0 0 6px 6px; }
 .crit-row.untouched-error { outline: 2px solid var(--sundt-red); outline-offset: -1px; }
 
-.crit-row-info { flex: 1 1 160px; min-width: 0; }
+.crit-row-info { flex: 1 1 130px; min-width: 0; }
 .crit-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .crit-label { font-size: 12.5px; font-weight: 700; color: var(--dark-text); }
 .info-btn {
@@ -329,12 +346,12 @@ body.judge-theme header.top .btn.secondary:hover { background: rgba(255,255,255,
 .crit-desc { font-size: 11.5px; color: var(--text-muted-2); margin-top: 3px; line-height: 1.35; }
 .crit-desc.hidden { display: none; }
 
-.crit-buttons { display: flex; flex-wrap: wrap; gap: 3px; flex-shrink: 0; }
+.crit-buttons { display: flex; flex-wrap: wrap; gap: 5px; flex-shrink: 0; }
 .score-btn {
-  width: 24px; height: 24px;
+  width: 30px; height: 30px;
   border: 1px solid var(--border-gray); background: #FFFFFF;
-  color: var(--charcoal); border-radius: 5px;
-  font-size: 11px; font-weight: 600; cursor: pointer; padding: 0;
+  color: var(--charcoal); border-radius: 6px;
+  font-size: 13px; font-weight: 600; cursor: pointer; padding: 0;
 }
 .score-btn:hover { border-color: var(--sundt-red); color: var(--sundt-red); }
 .score-btn.active { background: var(--sundt-red); border-color: var(--sundt-red); color: #FFFFFF; }
@@ -368,8 +385,7 @@ body.judge-theme header.top .btn.secondary:hover { background: rgba(255,255,255,
 
 /* ---------- notes ---------- */
 
-.notes-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px; }
-.notes-grid textarea { min-height: 56px; }
+#strengthsBox, #improvementsBox, #commentsBox { margin-bottom: 10px; }
 
 /* ---------- nominations ---------- */
 
@@ -408,6 +424,5 @@ body.judge-theme header.top .btn.secondary:hover { background: rgba(255,255,255,
   .rail-item { border-left: none; border-bottom: 3px solid transparent; flex-shrink: 0; min-width: 140px; }
   .rail-item.active { border-left-color: transparent; border-bottom-color: var(--sundt-red); }
   .scorecard-panel { padding: 14px 12px 24px; }
-  .notes-grid { grid-template-columns: 1fr; }
   .crit-score-col { width: 34px; }
 }
