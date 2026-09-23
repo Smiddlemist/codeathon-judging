@@ -21,7 +21,7 @@
 <!-- Login -->
 <div id="loginScreen" class="center-screen">
   <div class="card landing-card">
-    <div class="sundt-mark" aria-hidden="true">S</div>
+    <img class="sundt-logo-full" src="sundt-logo-full.png" alt="Sundt — Skill. Grit. Purpose." />
     <h1>Judge sign in</h1>
     <p>Use the email and password set up for you by the event admin.</p>
 
@@ -45,7 +45,7 @@
 <div id="judgeApp" class="hidden">
   <header class="top">
     <div class="brand-block">
-      <div class="sundt-mark small" aria-hidden="true">S</div>
+      <img class="sundt-mark small" src="sundt-mark.jpg" alt="Sundt" />
       <div class="brand-text">
         <div class="brand-title">Sundt code-a-thon</div>
         <div class="brand-subtitle">Judge scorecard</div>
@@ -75,7 +75,7 @@
 
       <div id="emptyState" class="empty-state">
         <div class="empty-state-inner">
-          <div class="sundt-mark large" aria-hidden="true">S</div>
+          <img class="sundt-mark large" src="sundt-mark.jpg" alt="Sundt" />
           <h2>Select a team to begin</h2>
           <p class="muted">Choose a team from the list on the left to score them.</p>
         </div>
@@ -90,11 +90,13 @@
 
         <div class="scorecard-header">
           <div class="scorecard-team-info">
-            <div class="lead" id="scTeamLead"></div>
+            <div class="team-eyebrow">Team / project</div>
             <div class="name" id="scTeamName"></div>
+            <div class="lead" id="scTeamMeta"></div>
+            <p class="team-description" id="scTeamDescription"></p>
           </div>
           <div class="score-ring-wrap">
-            <svg width="64" height="64" viewBox="0 0 64 64" class="score-ring" aria-hidden="true">
+            <svg width="56" height="56" viewBox="0 0 64 64" class="score-ring" aria-hidden="true">
               <circle cx="32" cy="32" r="27" class="ring-track" />
               <circle cx="32" cy="32" r="27" class="ring-fill" id="ringFill" />
             </svg>
@@ -127,6 +129,15 @@
             </div>
             <label for="commentsBox">Additional comments (optional)</label>
             <textarea id="commentsBox" placeholder="Anything else worth noting..."></textarea>
+          </section>
+
+          <section class="sc-section">
+            <h2>Nominations</h2>
+            <div id="nominationsList" class="nominations-list"></div>
+            <div class="rank-block">
+              <div class="rank-label">Overall ranking <span class="muted">(1 = best)</span></div>
+              <div id="rankButtons" class="rank-buttons"></div>
+            </div>
           </section>
 
         </div>

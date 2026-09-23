@@ -26,6 +26,14 @@ let scores = [];
 let criteria = []; // [{id, label, weight, order}]
 let criteriaSeeded = false;
 
+const NOMINATION_LABELS = {
+  recommend: "Recommend for further development",
+  mostCreative: "Most creative / innovative",
+  highestImpact: "Highest business impact",
+  bestDemo: "Best demo / presentation",
+  fanFavorite: "Fan favorite"
+};
+
 // ---------- Auth ----------
 loginBtn.addEventListener("click", async () => {
   loginErr.classList.add("hidden");
@@ -188,7 +196,13 @@ document.getElementById("closeDetailBtn").addEventListener("click", () => {
 
 function openTeamDetail(team) {
   detailTeamName.textContent = team.name;
-  detailTeamLead.textContent = "Lead: " + (team.lead || "—");
+  const metaParts = [];
+  if (team.lead) metaParts.push("Lead: " + team.lead);
+  if (team.members) metaParts.push("Team: " + team.members);
+  detailTeamLead.textContent = metaParts.length ? metaParts.join("   \u00b7   ") : "\u2014";
+  if (team.description) {
+    detailTeamLead.innerHTML += `<div style="margin-top:6px;">${escapeHtml(team.description)}</div>`;
+  }
   const teamScores = scores.filter((s) => s.teamId === team.id);
 
   if (teamScores.length === 0) {
@@ -205,13 +219,23 @@ function openTeamDetail(team) {
               : "";
           })
           .join("");
+        const nomLines = s.nominations
+          ? Object.keys(s.nominations)
+              .filter((k) => s.nominations[k])
+              .map((k) => `<span class="pill" style="margin:2px;">${escapeHtml(NOMINATION_LABELS[k] || k)}</span>`)
+              .join("")
+          : "";
+        const rankBadge = typeof s.overallRanking === "number"
+          ? `<span class="score-badge" style="margin-left:6px;">Ranked #${s.overallRanking}</span>`
+          : "";
         return `
           <div class="card" style="margin-bottom:10px;">
             <div class="row between">
               <strong>${escapeHtml(s.judgeName || "Unknown judge")}</strong>
-              <span class="score-badge">${weighted} / 10</span>
+              <span><span class="score-badge">${weighted} / 10</span>${rankBadge}</span>
             </div>
             <div style="margin:8px 0;">${critLines}</div>
+            ${nomLines ? `<div style="margin-top:4px;">${nomLines}</div>` : ""}
             ${s.strengths ? `<div style="margin-top:8px;"><div class="muted" style="font-size:12px;">Strengths</div>${escapeHtml(s.strengths)}</div>` : ""}
             ${s.improvements ? `<div style="margin-top:8px;"><div class="muted" style="font-size:12px;">Areas to improve</div>${escapeHtml(s.improvements)}</div>` : ""}
             ${s.additionalComments ? `<div style="margin-top:8px;"><div class="muted" style="font-size:12px;">Additional comments</div>${escapeHtml(s.additionalComments)}</div>` : ""}
@@ -276,19 +300,25 @@ function renderMatrix() {
 document.getElementById("addTeamBtn").addEventListener("click", async () => {
   const nameEl = document.getElementById("newTeamName");
   const leadEl = document.getElementById("newTeamLead");
+  const membersEl = document.getElementById("newTeamMembers");
+  const descEl = document.getElementById("newTeamDescription");
   const errEl = document.getElementById("teamErr");
   errEl.classList.add("hidden");
   const name = nameEl.value.trim();
   const lead = leadEl.value.trim();
+  const members = membersEl.value.trim();
+  const description = descEl.value.trim();
   if (!name) {
     errEl.textContent = "Team name is required.";
     errEl.classList.remove("hidden");
     return;
   }
   try {
-    await addDoc(collection(db, "teams"), { name, lead, createdAt: Date.now() });
+    await addDoc(collection(db, "teams"), { name, lead, members, description, createdAt: Date.now() });
     nameEl.value = "";
     leadEl.value = "";
+    membersEl.value = "";
+    descEl.value = "";
   } catch (e) {
     errEl.textContent = "Failed to add team.";
     errEl.classList.remove("hidden");
@@ -296,16 +326,33 @@ document.getElementById("addTeamBtn").addEventListener("click", async () => {
 });
 
 function renderTeamsTable() {
-  const tbody = document.querySelector("#teamsTable tbody");
-  tbody.innerHTML = "";
+  const container = document.getElementById("teamsListContainer");
+  container.innerHTML = "";
+  if (teams.length === 0) {
+    container.innerHTML = `<p class="muted">No teams yet. Add one above.</p>`;
+    return;
+  }
   teams.forEach((t) => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${escapeHtml(t.name)}</td>
-      <td class="muted">${escapeHtml(t.lead || "—")}</td>
-      <td><button class="btn danger small">Remove</button></td>
+    const row = document.createElement("div");
+    row.className = "card";
+    row.style.marginBottom = "10px";
+    row.innerHTML = `
+      <div class="row between">
+        <strong>${escapeHtml(t.name)}</strong>
+        <button class="btn danger small removeTeamBtn">Remove</button>
+      </div>
+      <div class="row">
+        <div style="flex:1;"><label>Team name</label><input class="nameInput" value="${escapeHtml(t.name)}" /></div>
+        <div style="flex:1;"><label>Team lead</label><input class="leadInput" value="${escapeHtml(t.lead || "")}" /></div>
+      </div>
+      <label>Team members</label>
+      <input class="membersInput" value="${escapeHtml(t.members || "")}" placeholder="e.g. Sydney Fox, Jaron Witt, Gnaneshwar Pabbathi" />
+      <label>Project description</label>
+      <textarea class="descInput" style="min-height:44px;" placeholder="A sentence or two on what the team built">${escapeHtml(t.description || "")}</textarea>
+      <button class="btn saveTeamBtn" style="margin-top:10px;">Save changes</button>
     `;
-    tr.querySelector("button").addEventListener("click", async () => {
+
+    row.querySelector(".removeTeamBtn").addEventListener("click", async () => {
       if (!confirm(`Remove team "${t.name}"? This also deletes all of its scores.`)) return;
       await deleteDoc(doc(db, "teams", t.id));
       const related = scores.filter((s) => s.teamId === t.id);
@@ -315,7 +362,22 @@ function renderTeamsTable() {
         await batch.commit();
       }
     });
-    tbody.appendChild(tr);
+
+    row.querySelector(".saveTeamBtn").addEventListener("click", async () => {
+      const newName = row.querySelector(".nameInput").value.trim();
+      if (!newName) {
+        alert("Team name can't be empty.");
+        return;
+      }
+      await updateDoc(doc(db, "teams", t.id), {
+        name: newName,
+        lead: row.querySelector(".leadInput").value.trim(),
+        members: row.querySelector(".membersInput").value.trim(),
+        description: row.querySelector(".descInput").value.trim()
+      });
+    });
+
+    container.appendChild(row);
   });
 }
 

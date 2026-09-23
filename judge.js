@@ -31,7 +31,8 @@ const draftBannerText = document.getElementById("draftBannerText");
 const discardDraftBtn = document.getElementById("discardDraftBtn");
 
 const scTeamName = document.getElementById("scTeamName");
-const scTeamLead = document.getElementById("scTeamLead");
+const scTeamMeta = document.getElementById("scTeamMeta");
+const scTeamDescription = document.getElementById("scTeamDescription");
 const liveScoreVal = document.getElementById("liveScoreVal");
 const ringFill = document.getElementById("ringFill");
 const criteriaContainer = document.getElementById("criteriaContainer");
@@ -39,11 +40,21 @@ const noCriteriaMsg = document.getElementById("noCriteriaMsg");
 const strengthsBox = document.getElementById("strengthsBox");
 const improvementsBox = document.getElementById("improvementsBox");
 const commentsBox = document.getElementById("commentsBox");
+const nominationsList = document.getElementById("nominationsList");
+const rankButtons = document.getElementById("rankButtons");
 const cancelScoreBtn = document.getElementById("cancelScoreBtn");
 const submitScoreBtn = document.getElementById("submitScoreBtn");
 const scoreErr = document.getElementById("scoreErr");
 const scoreOk = document.getElementById("scoreOk");
 const unsavedTag = document.getElementById("unsavedTag");
+
+const NOMINATION_OPTIONS = [
+  { key: "recommend", label: "Recommend for further development" },
+  { key: "mostCreative", label: "Most creative / innovative" },
+  { key: "highestImpact", label: "Highest business impact" },
+  { key: "bestDemo", label: "Best demo / presentation" },
+  { key: "fanFavorite", label: "Fan favorite" }
+];
 
 const RING_CIRCUMFERENCE = 2 * Math.PI * 27; // r=27, matches the SVG circles
 
@@ -77,6 +88,8 @@ let myScores = {};        // teamId -> saved score doc
 let currentTeam = null;
 let sliderValues = {};    // criterionId -> number | null
 let touched = {};         // criterionId -> boolean (has the judge interacted with it)
+let nominations = {};     // nominationKey -> boolean
+let overallRanking = null; // number | null
 let lastSavedSnapshot = null; // JSON string of last-saved form state, for dirty checking
 
 // ---------- Login ----------
@@ -165,6 +178,7 @@ function loadTeams() {
   onSnapshot(query(collection(db, "teams"), orderBy("name")), (snap) => {
     teams = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     renderTeamsRail();
+    if (currentTeam) renderRankButtons(); // rank button count depends on total team count
   });
 }
 
@@ -236,6 +250,8 @@ function saveDraftLocally() {
     strengths: strengthsBox.value,
     improvements: improvementsBox.value,
     additionalComments: commentsBox.value,
+    nominations: { ...nominations },
+    overallRanking,
     savedAt: Date.now()
   };
   try {
@@ -292,7 +308,9 @@ function currentFormSnapshot() {
     criteria: { ...sliderValues },
     strengths: strengthsBox.value,
     improvements: improvementsBox.value,
-    additionalComments: commentsBox.value
+    additionalComments: commentsBox.value,
+    nominations: { ...nominations },
+    overallRanking
   });
 }
 
@@ -373,10 +391,30 @@ function openScorecard(team) {
   });
 
   scTeamName.textContent = team.name;
-  scTeamLead.textContent = "Lead: " + (team.lead || "\u2014");
+  const metaParts = [];
+  if (team.lead) metaParts.push("Lead: " + team.lead);
+  if (team.members) metaParts.push("Team: " + team.members);
+  scTeamMeta.textContent = metaParts.join("   \u00b7   ");
+  scTeamDescription.textContent = team.description || "";
   strengthsBox.value = existing ? existing.strengths || "" : draft ? draft.strengths || "" : "";
   improvementsBox.value = existing ? existing.improvements || "" : draft ? draft.improvements || "" : "";
   commentsBox.value = existing ? existing.additionalComments || "" : draft ? draft.additionalComments || "" : "";
+
+  nominations = {};
+  NOMINATION_OPTIONS.forEach((n) => {
+    const savedVal = existing && existing.nominations ? existing.nominations[n.key] : undefined;
+    const draftVal = draft && draft.nominations ? draft.nominations[n.key] : undefined;
+    nominations[n.key] = typeof savedVal === "boolean" ? savedVal : typeof draftVal === "boolean" ? draftVal : false;
+  });
+  if (existing && typeof existing.overallRanking === "number") {
+    overallRanking = existing.overallRanking;
+  } else if (draft && typeof draft.overallRanking === "number") {
+    overallRanking = draft.overallRanking;
+  } else {
+    overallRanking = null;
+  }
+  renderNominationsSection();
+
   scoreErr.classList.add("hidden");
   scoreOk.classList.add("hidden");
 
@@ -400,8 +438,11 @@ function openScorecard(team) {
   } else {
     const emptyCriteria = {};
     criteria.forEach((c) => { emptyCriteria[c.id] = null; });
+    const emptyNominations = {};
+    NOMINATION_OPTIONS.forEach((n) => { emptyNominations[n.key] = false; });
     lastSavedSnapshot = JSON.stringify({
-      criteria: emptyCriteria, strengths: "", improvements: "", additionalComments: ""
+      criteria: emptyCriteria, strengths: "", improvements: "", additionalComments: "",
+      nominations: emptyNominations, overallRanking: null
     });
   }
   refreshDirtyIndicator();
@@ -438,6 +479,50 @@ cancelScoreBtn.addEventListener("click", () => {
   }
   closeScorecard();
 });
+
+function renderNominationsSection() {
+  renderNominationCheckboxes();
+  renderRankButtons();
+}
+
+function renderNominationCheckboxes() {
+  nominationsList.innerHTML = "";
+  NOMINATION_OPTIONS.forEach((n) => {
+    const label = document.createElement("label");
+    label.className = "nom-row";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = !!nominations[n.key];
+    checkbox.addEventListener("change", () => {
+      nominations[n.key] = checkbox.checked;
+      refreshDirtyIndicator();
+      scoreOk.classList.add("hidden");
+    });
+    label.appendChild(checkbox);
+    label.appendChild(document.createTextNode(" " + n.label));
+    nominationsList.appendChild(label);
+  });
+}
+
+function renderRankButtons() {
+  rankButtons.innerHTML = "";
+  const total = Math.max(teams.length, 1);
+  for (let i = 1; i <= total; i++) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "rank-btn" + (overallRanking === i ? " active" : "");
+    btn.textContent = String(i);
+    btn.addEventListener("click", () => {
+      overallRanking = overallRanking === i ? null : i; // clicking the active number clears it
+      rankButtons.querySelectorAll(".rank-btn").forEach((b, idx) => {
+        b.classList.toggle("active", overallRanking === idx + 1);
+      });
+      refreshDirtyIndicator();
+      scoreOk.classList.add("hidden");
+    });
+    rankButtons.appendChild(btn);
+  }
+}
 
 function renderCriteria() {
   criteriaContainer.innerHTML = "";
@@ -591,6 +676,8 @@ submitScoreBtn.addEventListener("click", async () => {
     strengths: strengthsBox.value.trim(),
     improvements: improvementsBox.value.trim(),
     additionalComments: commentsBox.value.trim(),
+    nominations: { ...nominations },
+    overallRanking,
     updatedAt: Date.now()
   };
 
