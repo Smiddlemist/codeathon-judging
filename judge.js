@@ -34,7 +34,7 @@ const scTeamName = document.getElementById("scTeamName");
 const scTeamMeta = document.getElementById("scTeamMeta");
 const scTeamDescription = document.getElementById("scTeamDescription");
 const liveScoreVal = document.getElementById("liveScoreVal");
-const ringFill = document.getElementById("ringFill");
+const criteriaTotalFill = document.getElementById("criteriaTotalFill");
 const criteriaContainer = document.getElementById("criteriaContainer");
 const noCriteriaMsg = document.getElementById("noCriteriaMsg");
 const strengthsBox = document.getElementById("strengthsBox");
@@ -54,8 +54,6 @@ const NOMINATION_OPTIONS = [
   { key: "bestDemo", label: "Best demo / presentation" },
   { key: "fanFavorite", label: "Fan favorite" }
 ];
-
-const RING_CIRCUMFERENCE = 2 * Math.PI * 27; // r=27, matches the SVG circles
 
 // ---------- Event poster splash ----------
 // Shown once per browser tab session, right after a judge signs in: a few
@@ -497,52 +495,57 @@ function renderCriteria() {
     noCriteriaMsg.classList.remove("hidden");
     submitScoreBtn.disabled = true;
     liveScoreVal.textContent = "0.0";
-    setRing(0);
+    setTotalBar(0);
     return;
   }
   noCriteriaMsg.classList.add("hidden");
   submitScoreBtn.disabled = false;
 
   criteria.forEach((c) => {
-    const block = document.createElement("div");
-    block.className = "criterion-block";
-    block.dataset.key = c.id;
+    const row = document.createElement("div");
+    row.className = "crit-row criterion-block";
+    row.dataset.key = c.id;
     const weightBadge = c.weight && c.weight !== 1 ? `<span class="pill">weight &times;${c.weight}</span>` : "";
     const infoBtn = c.description ? `<button type="button" class="info-btn" aria-expanded="false" aria-label="Show description">i</button>` : "";
     const descHtml = c.description ? `<div class="crit-desc hidden">${escapeHtml(c.description)}</div>` : "";
     const val = sliderValues[c.id];
-    const displayVal = typeof val === "number" ? val : "\u2013";
 
-    block.innerHTML = `
-      <div class="crit-top">
-        <span class="crit-label">${escapeHtml(c.label)}</span>
-        ${weightBadge}
-        ${infoBtn}
+    row.innerHTML = `
+      <div class="crit-row-info">
+        <div class="crit-top">
+          <span class="crit-label">${escapeHtml(c.label)}</span>
+          ${weightBadge}
+          ${infoBtn}
+        </div>
+        ${descHtml}
       </div>
-      ${descHtml}
-      <div class="slider-row">
-        <input type="range" min="0" max="10" step="1" value="${typeof val === "number" ? val : 5}" data-key="${c.id}" class="crit-slider" />
-        <button type="button" class="crit-val${typeof val === "number" ? "" : " unscored"}" data-key="${c.id}">${displayVal}</button>
-      </div>
+      <div class="crit-buttons"></div>
+      <div class="crit-score-col${typeof val === "number" ? "" : " unscored"}">${typeof val === "number" ? val : "\u2013"}</div>
     `;
 
-    const slider = block.querySelector(".crit-slider");
-    const valBtn = block.querySelector(".crit-val");
-    const info = block.querySelector(".info-btn");
-    const desc = block.querySelector(".crit-desc");
+    const buttonWrap = row.querySelector(".crit-buttons");
+    const scoreCol = row.querySelector(".crit-score-col");
+    const info = row.querySelector(".info-btn");
+    const desc = row.querySelector(".crit-desc");
 
-    slider.addEventListener("input", () => {
-      const n = Number(slider.value);
-      sliderValues[c.id] = n;
-      touched[c.id] = true;
-      valBtn.textContent = n;
-      valBtn.classList.remove("unscored");
-      block.classList.remove("untouched-error");
-      updateLiveScore();
-      refreshDirtyIndicator();
-    });
-
-    valBtn.addEventListener("click", () => makeValueEditable(block, c.id, valBtn, slider));
+    for (let n = 0; n <= 10; n++) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "score-btn" + (val === n ? " active" : "");
+      btn.textContent = String(n);
+      btn.addEventListener("click", () => {
+        sliderValues[c.id] = n;
+        touched[c.id] = true;
+        buttonWrap.querySelectorAll(".score-btn").forEach((b, idx) => b.classList.toggle("active", idx === n));
+        scoreCol.textContent = String(n);
+        scoreCol.classList.remove("unscored");
+        row.classList.remove("untouched-error");
+        updateLiveScore();
+        refreshDirtyIndicator();
+        scoreOk.classList.add("hidden");
+      });
+      buttonWrap.appendChild(btn);
+    }
 
     if (info) {
       info.addEventListener("click", () => {
@@ -552,61 +555,20 @@ function renderCriteria() {
       });
     }
 
-    criteriaContainer.appendChild(block);
+    criteriaContainer.appendChild(row);
   });
   updateLiveScore();
-}
-
-function makeValueEditable(block, key, valBtn, slider) {
-  const input = document.createElement("input");
-  input.type = "number";
-  input.min = "0";
-  input.max = "10";
-  input.step = "1";
-  input.className = "crit-val-input";
-  input.value = typeof sliderValues[key] === "number" ? sliderValues[key] : "";
-
-  valBtn.replaceWith(input);
-  input.focus();
-  input.select();
-
-  function commit() {
-    let n = parseInt(input.value, 10);
-    if (Number.isNaN(n)) {
-      // Leave unscored if they clear it and click away.
-      input.replaceWith(valBtn);
-      return;
-    }
-    n = Math.max(0, Math.min(10, n));
-    sliderValues[key] = n;
-    touched[key] = true;
-    slider.value = n;
-    valBtn.textContent = n;
-    valBtn.classList.remove("unscored");
-    block.classList.remove("untouched-error");
-    input.replaceWith(valBtn);
-    updateLiveScore();
-    refreshDirtyIndicator();
-  }
-
-  input.addEventListener("blur", commit);
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") { e.preventDefault(); commit(); }
-    if (e.key === "Escape") { input.value = typeof sliderValues[key] === "number" ? sliderValues[key] : ""; input.replaceWith(valBtn); }
-  });
 }
 
 function updateLiveScore() {
   const weighted = weightedScoreOfCurrent();
   liveScoreVal.textContent = weighted.toFixed(1);
-  setRing(weighted);
+  setTotalBar(weighted);
 }
 
-function setRing(weighted) {
+function setTotalBar(weighted) {
   const fraction = Math.max(0, Math.min(1, weighted / 10));
-  const offset = RING_CIRCUMFERENCE * (1 - fraction);
-  ringFill.style.strokeDasharray = String(RING_CIRCUMFERENCE);
-  ringFill.style.strokeDashoffset = String(offset);
+  criteriaTotalFill.style.width = (fraction * 100) + "%";
 }
 
 [strengthsBox, improvementsBox, commentsBox].forEach((el) => {
