@@ -356,17 +356,6 @@ input.crit-val-input {
 .nom-row:hover { background: var(--content-gray); }
 .nom-row input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--sundt-red); flex-shrink: 0; }
 
-.rank-block { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-gray); }
-.rank-label { font-size: 12px; font-weight: 600; color: var(--charcoal); margin-bottom: 8px; }
-.rank-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
-.rank-btn {
-  width: 30px; height: 30px; border-radius: 6px;
-  border: 1px solid var(--border-gray); background: #FFFFFF;
-  color: var(--charcoal); font-size: 13px; font-weight: 600; cursor: pointer; padding: 0;
-}
-.rank-btn:hover { border-color: var(--accent-blue); }
-.rank-btn.active { background: var(--sundt-red); border-color: var(--sundt-red); color: #FFFFFF; }
-
 /* ---------- action bar ---------- */
 
 .scorecard-actionbar {

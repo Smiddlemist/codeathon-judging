@@ -41,7 +41,6 @@ const strengthsBox = document.getElementById("strengthsBox");
 const improvementsBox = document.getElementById("improvementsBox");
 const commentsBox = document.getElementById("commentsBox");
 const nominationsList = document.getElementById("nominationsList");
-const rankButtons = document.getElementById("rankButtons");
 const cancelScoreBtn = document.getElementById("cancelScoreBtn");
 const submitScoreBtn = document.getElementById("submitScoreBtn");
 const scoreErr = document.getElementById("scoreErr");
@@ -89,7 +88,6 @@ let currentTeam = null;
 let sliderValues = {};    // criterionId -> number | null
 let touched = {};         // criterionId -> boolean (has the judge interacted with it)
 let nominations = {};     // nominationKey -> boolean
-let overallRanking = null; // number | null
 let lastSavedSnapshot = null; // JSON string of last-saved form state, for dirty checking
 
 // ---------- Login ----------
@@ -178,7 +176,6 @@ function loadTeams() {
   onSnapshot(query(collection(db, "teams"), orderBy("name")), (snap) => {
     teams = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     renderTeamsRail();
-    if (currentTeam) renderRankButtons(); // rank button count depends on total team count
   });
 }
 
@@ -251,7 +248,6 @@ function saveDraftLocally() {
     improvements: improvementsBox.value,
     additionalComments: commentsBox.value,
     nominations: { ...nominations },
-    overallRanking,
     savedAt: Date.now()
   };
   try {
@@ -309,8 +305,7 @@ function currentFormSnapshot() {
     strengths: strengthsBox.value,
     improvements: improvementsBox.value,
     additionalComments: commentsBox.value,
-    nominations: { ...nominations },
-    overallRanking
+    nominations: { ...nominations }
   });
 }
 
@@ -406,13 +401,6 @@ function openScorecard(team) {
     const draftVal = draft && draft.nominations ? draft.nominations[n.key] : undefined;
     nominations[n.key] = typeof savedVal === "boolean" ? savedVal : typeof draftVal === "boolean" ? draftVal : false;
   });
-  if (existing && typeof existing.overallRanking === "number") {
-    overallRanking = existing.overallRanking;
-  } else if (draft && typeof draft.overallRanking === "number") {
-    overallRanking = draft.overallRanking;
-  } else {
-    overallRanking = null;
-  }
   renderNominationsSection();
 
   scoreErr.classList.add("hidden");
@@ -442,7 +430,7 @@ function openScorecard(team) {
     NOMINATION_OPTIONS.forEach((n) => { emptyNominations[n.key] = false; });
     lastSavedSnapshot = JSON.stringify({
       criteria: emptyCriteria, strengths: "", improvements: "", additionalComments: "",
-      nominations: emptyNominations, overallRanking: null
+      nominations: emptyNominations
     });
   }
   refreshDirtyIndicator();
@@ -482,7 +470,6 @@ cancelScoreBtn.addEventListener("click", () => {
 
 function renderNominationsSection() {
   renderNominationCheckboxes();
-  renderRankButtons();
 }
 
 function renderNominationCheckboxes() {
@@ -502,26 +489,6 @@ function renderNominationCheckboxes() {
     label.appendChild(document.createTextNode(" " + n.label));
     nominationsList.appendChild(label);
   });
-}
-
-function renderRankButtons() {
-  rankButtons.innerHTML = "";
-  const total = Math.max(teams.length, 1);
-  for (let i = 1; i <= total; i++) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "rank-btn" + (overallRanking === i ? " active" : "");
-    btn.textContent = String(i);
-    btn.addEventListener("click", () => {
-      overallRanking = overallRanking === i ? null : i; // clicking the active number clears it
-      rankButtons.querySelectorAll(".rank-btn").forEach((b, idx) => {
-        b.classList.toggle("active", overallRanking === idx + 1);
-      });
-      refreshDirtyIndicator();
-      scoreOk.classList.add("hidden");
-    });
-    rankButtons.appendChild(btn);
-  }
 }
 
 function renderCriteria() {
@@ -677,7 +644,6 @@ submitScoreBtn.addEventListener("click", async () => {
     improvements: improvementsBox.value.trim(),
     additionalComments: commentsBox.value.trim(),
     nominations: { ...nominations },
-    overallRanking,
     updatedAt: Date.now()
   };
 

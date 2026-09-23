@@ -39,7 +39,17 @@ loginBtn.addEventListener("click", async () => {
   loginErr.classList.add("hidden");
   loginBtn.disabled = true;
   try {
-    await signInWithEmailAndPassword(auth, emailInput.value.trim(), passInput.value);
+    const cred = await signInWithEmailAndPassword(auth, emailInput.value.trim(), passInput.value);
+    if (cred.user.email !== ADMIN_EMAIL) {
+      // Only reject here, as a direct result of THIS sign-in attempt -- not from
+      // onAuthStateChanged below, which also fires for auth changes happening in
+      // other tabs (e.g. a judge signing in to judge.html shares this same
+      // browser's auth session). Signing out there would kill that other,
+      // perfectly legitimate session too.
+      await signOut(auth);
+      loginErr.textContent = "This account is not authorized as admin.";
+      loginErr.classList.remove("hidden");
+    }
   } catch (e) {
     loginErr.textContent = "Sign-in failed. Check the email/password.";
     loginErr.classList.remove("hidden");
@@ -56,11 +66,12 @@ onAuthStateChanged(auth, (user) => {
     dashboard.classList.remove("hidden");
     adminBadge.textContent = "👤 " + user.email;
     startListeners();
-  } else if (user && user.email !== ADMIN_EMAIL) {
-    loginErr.textContent = "This account is not authorized as admin.";
-    loginErr.classList.remove("hidden");
-    signOut(auth);
   } else {
+    // Either signed out, or signed in as some other account elsewhere in this
+    // browser (e.g. a judge's session in another tab, sharing the same Firebase
+    // Auth session). Either way, just show the admin login screen here --
+    // don't sign anything out from a passive listener, since that would also
+    // kill that other, legitimate session.
     dashboard.classList.add("hidden");
     loginScreen.classList.remove("hidden");
   }
@@ -225,14 +236,11 @@ function openTeamDetail(team) {
               .map((k) => `<span class="pill" style="margin:2px;">${escapeHtml(NOMINATION_LABELS[k] || k)}</span>`)
               .join("")
           : "";
-        const rankBadge = typeof s.overallRanking === "number"
-          ? `<span class="score-badge" style="margin-left:6px;">Ranked #${s.overallRanking}</span>`
-          : "";
         return `
           <div class="card" style="margin-bottom:10px;">
             <div class="row between">
               <strong>${escapeHtml(s.judgeName || "Unknown judge")}</strong>
-              <span><span class="score-badge">${weighted} / 10</span>${rankBadge}</span>
+              <span class="score-badge">${weighted} / 10</span>
             </div>
             <div style="margin:8px 0;">${critLines}</div>
             ${nomLines ? `<div style="margin-top:4px;">${nomLines}</div>` : ""}
