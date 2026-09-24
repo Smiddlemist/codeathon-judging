@@ -41,6 +41,7 @@
     <div class="tabs">
       <button class="tab-btn active" data-tab="leaderboard">📊 Leaderboard</button>
       <button class="tab-btn" data-tab="matrix">🧮 Judge Coverage</button>
+      <button class="tab-btn" data-tab="nominations">🏅 Nominations</button>
       <button class="tab-btn" data-tab="teams">🏗️ Teams</button>
       <button class="tab-btn" data-tab="judges">👩‍⚖️ Judges</button>
       <button class="tab-btn" data-tab="categories">⚖️ Categories</button>
@@ -80,8 +81,30 @@
       </div>
     </div>
 
+    <!-- Nominations totals -->
+    <div class="tab-panel" id="tab-nominations">
+      <div class="card">
+        <h2 style="margin-top:0;">Nomination totals</h2>
+        <p class="muted" style="font-size:13px;">How many judges nominated each team for each award. Sorted by total nominations.</p>
+        <div class="table-scroll">
+          <table id="nominationsTable"><thead></thead><tbody></tbody></table>
+        </div>
+      </div>
+    </div>
+
     <!-- Teams management -->
     <div class="tab-panel" id="tab-teams">
+      <div class="card">
+        <h2 style="margin-top:0;">Import teams from CSV</h2>
+        <p class="muted" style="font-size:13px;">
+          Columns: <code>name</code> (required), <code>lead</code>, <code>members</code>, <code>description</code> -- any order, first row must be headers.
+          A row whose name matches an existing team updates that team's blank fields; anything else creates a new team.
+        </p>
+        <input type="file" id="teamsCsvInput" accept=".csv" />
+        <button id="importTeamsCsvBtn" class="btn secondary" style="margin-top:12px;">Import CSV</button>
+        <div id="teamsCsvErr" class="err hidden"></div>
+        <div id="teamsCsvOk" class="ok-msg hidden"></div>
+      </div>
       <div class="card">
         <h2 style="margin-top:0;">Add a team</h2>
         <div class="row">

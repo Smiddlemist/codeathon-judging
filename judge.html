@@ -12,12 +12,6 @@
 </head>
 <body class="judge-theme">
 
-<!-- Event poster splash: shown briefly right after a judge signs in -->
-<div id="splashScreen" class="splash-overlay hidden" role="dialog" aria-label="Code-A-Thon event poster">
-  <img src="codeathon-poster.png" alt="Code-A-Thon: Build, code, vibe, repeat. October 20th 2026, 7:30am to 4:00pm, KAPBCS Training Center." />
-  <div class="splash-hint">Tap anywhere to continue</div>
-</div>
-
 <!-- Login -->
 <div id="loginScreen" class="center-screen">
   <div class="card landing-card">
@@ -75,18 +69,12 @@
 
       <div id="emptyState" class="empty-state">
         <div class="empty-state-inner">
-          <img class="sundt-mark large" src="sundt-mark.jpg" alt="Sundt" />
           <h2>Select a team to begin</h2>
           <p class="muted">Choose a team from the list on the left to score them.</p>
         </div>
       </div>
 
       <div id="scorecardContent" class="hidden">
-
-        <div id="draftBanner" class="draft-banner hidden">
-          <span id="draftBannerText"></span>
-          <button type="button" id="discardDraftBtn" class="link-btn">Discard draft</button>
-        </div>
 
         <div class="scorecard-header">
           <div class="team-eyebrow">Team / project</div>

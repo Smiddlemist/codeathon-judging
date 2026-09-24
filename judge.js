@@ -14,8 +14,6 @@ const loginBtn = document.getElementById("loginBtn");
 const loginErr = document.getElementById("loginErr");
 const forgotBtn = document.getElementById("forgotBtn");
 
-const splashScreen = document.getElementById("splashScreen");
-
 const judgeApp = document.getElementById("judgeApp");
 const judgeBadge = document.getElementById("judgeBadge");
 const signOutBtn = document.getElementById("signOutBtn");
@@ -26,9 +24,6 @@ const progressText = document.getElementById("progressText");
 
 const emptyState = document.getElementById("emptyState");
 const scorecardContent = document.getElementById("scorecardContent");
-const draftBanner = document.getElementById("draftBanner");
-const draftBannerText = document.getElementById("draftBannerText");
-const discardDraftBtn = document.getElementById("discardDraftBtn");
 
 const scTeamName = document.getElementById("scTeamName");
 const scTeamMeta = document.getElementById("scTeamMeta");
@@ -54,28 +49,6 @@ const NOMINATION_OPTIONS = [
   { key: "bestDemo", label: "Best demo / presentation" },
   { key: "fanFavorite", label: "Fan favorite" }
 ];
-
-// ---------- Event poster splash ----------
-// Shown once per browser tab session, right after a judge signs in: a few
-// seconds of the event poster, dismissible early by tapping anywhere.
-let splashShown = false;
-function showSplashOnce() {
-  if (splashShown) return;
-  try {
-    if (sessionStorage.getItem("codeathonSplashShown")) { splashShown = true; return; }
-  } catch (e) {
-    // sessionStorage unavailable — fine, it'll just show every time in that case.
-  }
-  splashShown = true;
-  splashScreen.classList.remove("hidden");
-  const dismiss = () => {
-    splashScreen.classList.add("fade-out");
-    setTimeout(() => splashScreen.classList.add("hidden"), 400);
-    try { sessionStorage.setItem("codeathonSplashShown", "1"); } catch (e) {}
-  };
-  splashScreen.addEventListener("click", dismiss, { once: true });
-  setTimeout(dismiss, 3000);
-}
 
 // ---------- state ----------
 let currentJudge = null; // { id: uid, name, email, ... }
@@ -144,7 +117,6 @@ onAuthStateChanged(auth, async (user) => {
   loginScreen.classList.add("hidden");
   judgeApp.classList.remove("hidden");
   judgeBadge.textContent = "Signed in as " + currentJudge.name;
-  showSplashOnce();
   loadTeams();
   loadCriteria();
   loadMyScores();
@@ -404,14 +376,6 @@ function openScorecard(team) {
   scoreErr.classList.add("hidden");
   scoreOk.classList.add("hidden");
 
-  if (!existing && draft) {
-    const when = new Date(draft.savedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-    draftBannerText.textContent = `Restored an unsaved draft from ${when} on this device.`;
-    draftBanner.classList.remove("hidden");
-  } else {
-    draftBanner.classList.add("hidden");
-  }
-
   renderCriteria();
 
   // Baseline for the "unsaved changes" comparison: if this team already has a saved
@@ -446,14 +410,6 @@ function closeScorecard(persistDraft = true) {
   currentTeam = null;
   renderTeamsRail();
 }
-
-discardDraftBtn.addEventListener("click", () => {
-  if (!currentJudge || !currentTeam) return;
-  clearDraft(currentJudge.id, currentTeam.id);
-  const team = currentTeam;
-  currentTeam = null; // prevents openScorecard from re-persisting the discarded values as a new draft
-  openScorecard(team);
-});
 
 cancelScoreBtn.addEventListener("click", () => {
   if (isDirty()) {
@@ -617,7 +573,6 @@ submitScoreBtn.addEventListener("click", async () => {
     clearDraft(currentJudge.id, currentTeam.id);
     lastSavedSnapshot = currentFormSnapshot();
     refreshDirtyIndicator();
-    draftBanner.classList.add("hidden");
     scoreOk.textContent = "Score saved.";
     scoreOk.classList.remove("hidden");
     renderTeamsRail();

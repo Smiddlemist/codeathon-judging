@@ -95,6 +95,7 @@ function startListeners() {
     renderResetSelects();
     renderLeaderboard();
     renderMatrix();
+    renderNominationsTable();
   });
   onSnapshot(query(collection(db, "judges"), orderBy("name")), (snap) => {
     judges = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -106,6 +107,7 @@ function startListeners() {
     scores = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     renderLeaderboard();
     renderMatrix();
+    renderNominationsTable();
     document.getElementById("statScores").textContent = scores.length;
   });
   onSnapshot(collection(db, "criteria"), async (snap) => {
@@ -304,6 +306,47 @@ function renderMatrix() {
   });
 }
 
+// ---------- Nomination totals ----------
+function renderNominationsTable() {
+  const table = document.getElementById("nominationsTable");
+  if (!table) return; // tab not in the DOM yet on first paint
+  const thead = table.querySelector("thead");
+  const tbody = table.querySelector("tbody");
+  const nomKeys = Object.keys(NOMINATION_LABELS);
+
+  thead.innerHTML =
+    "<tr><th>Team</th>" +
+    nomKeys.map((k) => `<th>${escapeHtml(NOMINATION_LABELS[k])}</th>`).join("") +
+    "<th>Total</th></tr>";
+
+  const rows = teams.map((t) => {
+    const teamScores = scores.filter((s) => s.teamId === t.id);
+    const counts = {};
+    let total = 0;
+    nomKeys.forEach((k) => {
+      const count = teamScores.filter((s) => s.nominations && s.nominations[k]).length;
+      counts[k] = count;
+      total += count;
+    });
+    return { team: t, counts, total };
+  });
+  rows.sort((a, b) => b.total - a.total);
+
+  tbody.innerHTML = "";
+  if (rows.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="${nomKeys.length + 2}" class="muted">No teams yet.</td></tr>`;
+    return;
+  }
+  rows.forEach((r) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      `<td>${escapeHtml(r.team.name)}</td>` +
+      nomKeys.map((k) => `<td>${r.counts[k] || ""}</td>`).join("") +
+      `<td><strong>${r.total}</strong></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
 // ---------- Teams CRUD ----------
 document.getElementById("addTeamBtn").addEventListener("click", async () => {
   const nameEl = document.getElementById("newTeamName");
@@ -388,6 +431,136 @@ function renderTeamsTable() {
     container.appendChild(row);
   });
 }
+
+// ---------- Teams CSV import ----------
+// Minimal CSV parser: handles quoted fields (with embedded commas/newlines)
+// and "" as an escaped quote inside a quoted field. Good enough for a
+// roster export from Sheets/Excel/Forms without pulling in a library.
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let field = "";
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else {
+        field += c;
+      }
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ",") {
+      row.push(field);
+      field = "";
+    } else if (c === "\n") {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+    } else if (c !== "\r") {
+      field += c;
+    }
+  }
+  if (field.length > 0 || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows.filter((r) => r.some((cell) => cell.trim() !== ""));
+}
+
+document.getElementById("importTeamsCsvBtn").addEventListener("click", async () => {
+  const fileInput = document.getElementById("teamsCsvInput");
+  const errEl = document.getElementById("teamsCsvErr");
+  const okEl = document.getElementById("teamsCsvOk");
+  errEl.classList.add("hidden");
+  okEl.classList.add("hidden");
+
+  const file = fileInput.files[0];
+  if (!file) {
+    errEl.textContent = "Choose a CSV file first.";
+    errEl.classList.remove("hidden");
+    return;
+  }
+
+  try {
+    const text = await file.text();
+    const rows = parseCsv(text);
+    if (rows.length < 2) {
+      errEl.textContent = "That CSV doesn't have any data rows below the header.";
+      errEl.classList.remove("hidden");
+      return;
+    }
+
+    const header = rows[0].map((h) => h.trim().toLowerCase());
+    const nameIdx = header.findIndex((h) => h === "name" || h === "team name" || h === "team");
+    const leadIdx = header.findIndex((h) => h === "lead" || h === "team lead");
+    const membersIdx = header.findIndex((h) => h.includes("member"));
+    const descIdx = header.findIndex((h) => h.includes("desc"));
+
+    if (nameIdx === -1) {
+      errEl.textContent = 'The CSV needs a "name" column at minimum.';
+      errEl.classList.remove("hidden");
+      return;
+    }
+
+    // Match against teams already loaded, case-insensitively by name.
+    const existingByName = {};
+    teams.forEach((t) => { existingByName[t.name.trim().toLowerCase()] = t; });
+
+    let added = 0, updated = 0, skipped = 0;
+    const batches = [writeBatch(db)];
+    let opsInBatch = 0;
+    const nextWrite = () => {
+      if (opsInBatch >= 400) { batches.push(writeBatch(db)); opsInBatch = 0; }
+      opsInBatch++;
+      return batches[batches.length - 1];
+    };
+
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      const name = (row[nameIdx] || "").trim();
+      if (!name) { skipped++; continue; }
+      const lead = leadIdx !== -1 ? (row[leadIdx] || "").trim() : "";
+      const members = membersIdx !== -1 ? (row[membersIdx] || "").trim() : "";
+      const description = descIdx !== -1 ? (row[descIdx] || "").trim() : "";
+
+      const existing = existingByName[name.toLowerCase()];
+      if (existing) {
+        // Only fill in blanks -- don't clobber anything already entered in the admin console.
+        const updates = {};
+        if (lead && !existing.lead) updates.lead = lead;
+        if (members && !existing.members) updates.members = members;
+        if (description && !existing.description) updates.description = description;
+        if (Object.keys(updates).length > 0) {
+          nextWrite().set(doc(db, "teams", existing.id), updates, { merge: true });
+          updated++;
+        }
+      } else {
+        const newRef = doc(collection(db, "teams"));
+        nextWrite().set(newRef, { name, lead, members, description, createdAt: Date.now() });
+        existingByName[name.toLowerCase()] = { id: newRef.id, name, lead, members, description }; // avoid dupes within the same file
+        added++;
+      }
+    }
+
+    for (const b of batches) {
+      await b.commit();
+    }
+
+    const parts = [`${added} team${added === 1 ? "" : "s"} added`, `${updated} updated`];
+    if (skipped) parts.push(`${skipped} row${skipped === 1 ? "" : "s"} skipped (no name)`);
+    okEl.textContent = "Import complete: " + parts.join(", ") + ".";
+    okEl.classList.remove("hidden");
+    fileInput.value = "";
+  } catch (e) {
+    console.error(e);
+    errEl.textContent = "Couldn't read or import that file. Make sure it's a valid CSV.";
+    errEl.classList.remove("hidden");
+  }
+});
 
 // ---------- Judges CRUD ----------
 // Creating a judge means creating them a real Firebase Auth login. The
