@@ -99,12 +99,16 @@ let nominations = {};     // nominationKey -> boolean
 let lastSavedSnapshot = null; // JSON string of last-saved form state, for dirty checking
 
 // ---------- Login ----------
+let justSignedIn = false;
+
 loginBtn.addEventListener("click", async () => {
   loginErr.classList.add("hidden");
   loginBtn.disabled = true;
   try {
+    justSignedIn = true;
     await signInWithEmailAndPassword(auth, emailInput.value.trim(), passInput.value);
   } catch (e) {
+    justSignedIn = false;
     loginErr.textContent = "Sign-in failed. Check your email and password.";
     loginErr.classList.remove("hidden");
   } finally {
@@ -142,6 +146,7 @@ onAuthStateChanged(auth, async (user) => {
     loginScreen.classList.remove("hidden");
     currentJudge = null;
     showAdminUI = false;
+    justSignedIn = false;
     idleActive = false;
     if (idleTimer) clearTimeout(idleTimer);
     return;
@@ -165,6 +170,17 @@ onAuthStateChanged(auth, async (user) => {
     loginErr.textContent = "This account isn't set up as an active judge. Contact the event admin.";
     loginErr.classList.remove("hidden");
     await signOut(auth);
+    return;
+  }
+
+  if (justSignedIn) {
+    // They just successfully signed in from this exact login form -- send
+    // them to the poster landing page first; they click through from there
+    // to actually enter the scorecard. A page load with an already-existing
+    // session (e.g. clicking through from index.html, or a refresh while
+    // already signed in) skips this and goes straight to the scorecard below.
+    justSignedIn = false;
+    window.location.href = "index.html";
     return;
   }
 

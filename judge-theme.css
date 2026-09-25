@@ -183,29 +183,27 @@ body.judge-theme header.top .btn.secondary:hover { background: rgba(255,255,255,
 
 .empty-state {
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 18px;
   min-height: 400px;
   border-radius: 12px;
 }
-.empty-state-poster {
+.empty-state-inner {
+  text-align: center;
+  max-width: 320px;
+  background: #FFFFFF;
+  border: 1px solid var(--border-gray);
+  border-radius: 12px;
+  padding: 28px 26px;
+}
+.empty-state-logo {
   display: block;
   width: auto;
   height: auto;
   max-width: 100%;
-  max-height: 55vh;
-  border-radius: 12px;
-  box-shadow: 0 12px 40px rgba(0,0,0,0.25);
-}
-.empty-state-inner {
-  text-align: center;
-  max-width: 280px;
-  background: #FFFFFF;
-  border: 1px solid var(--border-gray);
-  border-radius: 12px;
-  padding: 20px 22px;
+  max-height: 90px;
+  object-fit: contain;
+  margin: 0 auto 16px;
 }
 .empty-state-inner h2 { font-size: 18px; margin: 0 0 6px; }
 
