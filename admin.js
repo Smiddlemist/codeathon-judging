@@ -183,7 +183,7 @@ function renderLeaderboard() {
       <td>${escapeHtml(r.team.name)}</td>
       <td class="muted">${escapeHtml(r.team.lead || "—")}</td>
       <td>${r.n}</td>
-      <td><strong>${r.weightedAvg.toFixed(1)}</strong>${r.penalty ? ` <span class="pill" title="Raw score ${r.rawAvg.toFixed(1)} minus ${r.penalty}-pt penalty${r.team.penaltyReason ? ": " + escapeHtml(r.team.penaltyReason) : ""}" style="background:#c0392b;color:#fff;">-${r.penalty}</span>` : ""}</td>
+      <td><strong>${r.weightedAvg.toFixed(1)}</strong>${r.penalty ? ` <span class="pill" title="Raw score ${r.rawAvg.toFixed(1)} minus ${r.penalty}-pt penalty${r.team.penaltyReason ? ": " + escapeHtml(r.team.penaltyReason) : ""}" style="background:#C42931;color:#fff;">-${r.penalty}</span>` : ""}</td>
       ${criteria.map((c) => `<td>${r.critAvgs[c.id] === null ? "—" : r.critAvgs[c.id].toFixed(1)}</td>`).join("")}
     `;
     tr.addEventListener("click", () => openTeamDetail(r.team));
@@ -210,7 +210,7 @@ function openTeamDetail(team) {
     detailTeamLead.innerHTML += `<div style="margin-top:6px;">${escapeHtml(team.description)}</div>`;
   }
   if (typeof team.penalty === "number" && team.penalty > 0) {
-    detailTeamLead.innerHTML += `<div style="margin-top:6px;"><span class="pill" style="background:#c0392b;color:#fff;">Penalty applied: -${team.penalty}</span>${team.penaltyReason ? ` <span class="muted">${escapeHtml(team.penaltyReason)}</span>` : ""}</div>`;
+    detailTeamLead.innerHTML += `<div style="margin-top:6px;"><span class="pill" style="background:#C42931;color:#fff;">Penalty applied: -${team.penalty}</span>${team.penaltyReason ? ` <span class="muted">${escapeHtml(team.penaltyReason)}</span>` : ""}</div>`;
   }
   const teamScores = scores.filter((s) => s.teamId === team.id);
 
