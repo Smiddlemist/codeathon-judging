@@ -15,6 +15,7 @@ import {
 // real security, not just a hidden button.
 let showAdminUI = false; // true only when signed in as ADMIN_EMAIL
 let teamPenaltyValue = 0; // loaded from config/settings, admin-configured flat point deduction
+let configScoresResetAt = 0; // loaded from config/settings, set whenever admin does a full score reset
 
 // ---------- Idle timeout ----------
 // After this many milliseconds of no clicks/keystrokes/scrolling/touches
@@ -198,7 +199,7 @@ onAuthStateChanged(auth, async (user) => {
   loadTeams();
   loadCriteria();
   loadMyScores();
-  if (showAdminUI) loadPenaltyConfig();
+  loadConfigSettings(); // every signed-in user needs configScoresResetAt, not just admin
   flushPendingSaves();
   idleActive = true;
   resetIdleTimer();
@@ -208,11 +209,11 @@ adminConsoleBtn.addEventListener("click", () => {
   window.location.href = "admin.html";
 });
 
-function loadPenaltyConfig() {
+function loadConfigSettings() {
   onSnapshot(doc(db, "config", "settings"), (snap) => {
-    teamPenaltyValue = snap.exists() && typeof snap.data().teamPenaltyValue === "number"
-      ? snap.data().teamPenaltyValue
-      : 0;
+    const data = snap.exists() ? snap.data() : {};
+    teamPenaltyValue = typeof data.teamPenaltyValue === "number" ? data.teamPenaltyValue : 0;
+    configScoresResetAt = typeof data.scoresResetAt === "number" ? data.scoresResetAt : 0;
     if (currentTeam) updatePenaltyUI();
   });
 }
@@ -332,7 +333,28 @@ function saveDraftLocally() {
 function readDraft(judgeId, teamId) {
   try {
     const raw = localStorage.getItem(draftKey(judgeId, teamId));
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    const draft = JSON.parse(raw);
+
+    // Discard the draft if it predates a reset that could have wiped the
+    // score it was based on -- a global reset, a reset of this judge, or a
+    // reset of this specific team. Without this check, "Reset Scores" in the
+    // admin console only clears Firestore; each judge's browser would keep
+    // resurrecting the old value as a "draft" indefinitely.
+    const team = teams.find((t) => t.id === teamId);
+    const resetMarkers = [
+      configScoresResetAt,
+      currentJudge && currentJudge.id === judgeId && typeof currentJudge.scoresResetAt === "number"
+        ? currentJudge.scoresResetAt : 0,
+      team && typeof team.scoresResetAt === "number" ? team.scoresResetAt : 0
+    ];
+    const latestReset = Math.max(0, ...resetMarkers);
+    if (typeof draft.savedAt === "number" && draft.savedAt < latestReset) {
+      clearDraft(judgeId, teamId);
+      return null;
+    }
+
+    return draft;
   } catch (e) {
     return null;
   }

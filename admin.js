@@ -862,9 +862,15 @@ function renderResetSelects() {
 }
 
 // ---------- Reset actions ----------
+// Each reset stamps a "scoresResetAt" marker (global, per-judge, or per-team)
+// so that a judge's browser knows to discard any local draft saved before the
+// reset, instead of resurrecting a stale score after the reset. Without this,
+// "Reset Scores" only clears Firestore -- each judge's own device would keep
+// showing their old local draft as if nothing happened.
 document.getElementById("resetAllBtn").addEventListener("click", async () => {
   if (!confirm("This deletes ALL scorecards from ALL judges for ALL teams. Continue?")) return;
   await deleteAllScores(scores);
+  await setDoc(doc(db, "config", "settings"), { scoresResetAt: Date.now() }, { merge: true });
   alert("All scores have been reset.");
 });
 
@@ -875,6 +881,7 @@ document.getElementById("resetJudgeBtn").addEventListener("click", async () => {
   if (!confirm(`Delete all scores submitted by "${judge.name}"?`)) return;
   const toDelete = scores.filter((s) => s.judgeId === judgeId);
   await deleteAllScores(toDelete);
+  await updateDoc(doc(db, "judges", judgeId), { scoresResetAt: Date.now() });
   alert(`Reset scores for judge "${judge.name}".`);
 });
 
@@ -885,6 +892,7 @@ document.getElementById("resetTeamBtn").addEventListener("click", async () => {
   if (!confirm(`Delete all scores for team "${team.name}" (from every judge)?`)) return;
   const toDelete = scores.filter((s) => s.teamId === teamId);
   await deleteAllScores(toDelete);
+  await updateDoc(doc(db, "teams", teamId), { scoresResetAt: Date.now() });
   alert(`Reset scores for team "${team.name}".`);
 });
 
