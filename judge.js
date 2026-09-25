@@ -492,7 +492,17 @@ function openScorecard(team) {
 }
 
 // ---------- Team penalty (admin-only) ----------
+const penaltyPanel = document.getElementById("penaltyPanel");
+const penaltyPanelTitle = document.getElementById("penaltyPanelTitle");
+const penaltyApplyFields = document.getElementById("penaltyApplyFields");
+const penaltyReasonInput = document.getElementById("penaltyReasonInput");
+const penaltyPanelMsg = document.getElementById("penaltyPanelMsg");
+const penaltyPanelCancelBtn = document.getElementById("penaltyPanelCancelBtn");
+const penaltyPanelConfirmBtn = document.getElementById("penaltyPanelConfirmBtn");
+let penaltyPanelMode = null; // "apply" | "remove" | null
+
 function updatePenaltyUI() {
+  closePenaltyPanel();
   if (!showAdminUI || !currentTeam) {
     applyPenaltyBtn.classList.add("hidden");
     penaltyBadge.classList.add("hidden");
@@ -510,38 +520,69 @@ function updatePenaltyUI() {
   }
 }
 
-applyPenaltyBtn.addEventListener("click", async () => {
+function closePenaltyPanel() {
+  penaltyPanelMode = null;
+  penaltyPanel.classList.add("hidden");
+  penaltyReasonInput.value = "";
+  penaltyPanelMsg.textContent = "";
+}
+
+applyPenaltyBtn.addEventListener("click", () => {
   if (!showAdminUI || !currentTeam) return;
   const hasPenalty = typeof currentTeam.penalty === "number" && currentTeam.penalty > 0;
-  applyPenaltyBtn.disabled = true;
+
+  if (hasPenalty) {
+    penaltyPanelMode = "remove";
+    penaltyPanelTitle.textContent = "Remove team penalty";
+    penaltyApplyFields.classList.add("hidden");
+    penaltyPanelMsg.textContent = `Remove the ${currentTeam.penalty}-point penalty from "${currentTeam.name}"?`;
+    penaltyPanelConfirmBtn.textContent = "Remove penalty";
+  } else {
+    if (!teamPenaltyValue) {
+      penaltyPanelMode = null;
+      penaltyPanelTitle.textContent = "Apply team penalty";
+      penaltyApplyFields.classList.add("hidden");
+      penaltyPanelMsg.textContent = 'The penalty amount is currently 0. Set it in the admin console\u2019s "Penalties" tab first, then come back here.';
+      penaltyPanelConfirmBtn.classList.add("hidden");
+      penaltyPanel.classList.remove("hidden");
+      return;
+    }
+    penaltyPanelMode = "apply";
+    penaltyPanelTitle.textContent = "Apply team penalty";
+    penaltyApplyFields.classList.remove("hidden");
+    penaltyPanelMsg.textContent = `This subtracts ${teamPenaltyValue} points from "${currentTeam.name}"'s overall score on the leaderboard immediately for everyone.`;
+    penaltyPanelConfirmBtn.textContent = `Apply -${teamPenaltyValue} penalty`;
+  }
+  penaltyPanelConfirmBtn.classList.remove("hidden");
+  penaltyPanel.classList.remove("hidden");
+  if (penaltyPanelMode === "apply") penaltyReasonInput.focus();
+});
+
+penaltyPanelCancelBtn.addEventListener("click", closePenaltyPanel);
+
+penaltyPanelConfirmBtn.addEventListener("click", async () => {
+  if (!penaltyPanelMode || !currentTeam) return;
+  penaltyPanelConfirmBtn.disabled = true;
   try {
-    if (hasPenalty) {
-      if (!confirm(`Remove the ${currentTeam.penalty}-point penalty from "${currentTeam.name}"?`)) return;
+    if (penaltyPanelMode === "remove") {
       await updateDoc(doc(db, "teams", currentTeam.id), { penalty: deleteField(), penaltyReason: deleteField() });
       currentTeam.penalty = undefined;
       currentTeam.penaltyReason = undefined;
     } else {
-      if (!teamPenaltyValue) {
-        alert('The penalty amount is currently 0. Set it in the admin console\'s "Penalties" tab first, then come back here.');
-        return;
-      }
-      const reason = prompt(`Reason for this ${teamPenaltyValue}-point penalty (optional, shown in the admin console):`, "");
-      if (reason === null) return; // they clicked Cancel on the prompt
-      if (!confirm(`Apply a ${teamPenaltyValue}-point penalty to "${currentTeam.name}"'s overall score? This affects the leaderboard immediately for everyone.`)) return;
-      await updateDoc(doc(db, "teams", currentTeam.id), { penalty: teamPenaltyValue, penaltyReason: reason.trim() });
+      const reason = penaltyReasonInput.value.trim();
+      await updateDoc(doc(db, "teams", currentTeam.id), { penalty: teamPenaltyValue, penaltyReason: reason });
       currentTeam.penalty = teamPenaltyValue;
-      currentTeam.penaltyReason = reason.trim();
+      currentTeam.penaltyReason = reason;
     }
     updatePenaltyUI();
+    closePenaltyPanel();
   } catch (e) {
     console.error(e);
-    alert(
-      e.code === "permission-denied"
-        ? "Couldn't update the penalty: permission denied. Check that your Firestore rules let the admin account write the \"teams\" collection."
-        : "Couldn't update the penalty. Check your connection and try again."
-    );
+    penaltyPanelMsg.textContent = e.code === "permission-denied"
+      ? "Couldn't update the penalty: permission denied. Check your Firestore rules for the \"teams\" collection."
+      : "Couldn't update the penalty. Check your connection and try again.";
   } finally {
-    applyPenaltyBtn.disabled = false;
+    penaltyPanelConfirmBtn.disabled = false;
   }
 });
 

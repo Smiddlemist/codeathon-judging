@@ -1,0 +1,244 @@
+/* ============================================================
+   Sundt brand theme — admin.html only.
+   Loaded AFTER style.css, so these rules override it here
+   without touching judge.html / index.html's light theme.
+   Keeps the existing dark, data-dense layout; re-skins color,
+   type, and component styling to match the Sundt brand.
+   ============================================================ */
+
+:root {
+  --sundt-red: #EF373E;
+  --sundt-red-dark: #C42931;
+  --charcoal: #333333;
+  --accent-blue: #0F4761;
+  --navy: #16305A;
+  --navy-deep: #0F2140;
+  --card-navy: #1E2C4C;
+  --border-soft: rgba(255,255,255,0.14);
+  --text-soft: #C7CBD4;
+  --text-dim: #8B93A3;
+}
+
+body.admin-theme {
+  background: var(--navy-deep);
+  color: #EDEEF2;
+  font-family: "Open Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body.admin-theme a { color: #8FC1E8; }
+
+body.admin-theme h1,
+body.admin-theme h2 {
+  font-family: "Big Shoulders Display", "Open Sans", sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  color: #FFFFFF;
+}
+
+/* ---------- cards / surfaces ---------- */
+
+body.admin-theme .card {
+  background: var(--card-navy);
+  border: 1px solid var(--border-soft);
+  box-shadow: none;
+  color: #EDEEF2;
+}
+
+body.admin-theme .center-screen { background: var(--navy-deep); }
+body.admin-theme .landing-card { text-align: center; }
+body.admin-theme .landing-card p { color: var(--text-soft); }
+
+/* ---------- form controls ---------- */
+
+body.admin-theme input,
+body.admin-theme select,
+body.admin-theme textarea {
+  background: var(--navy-deep);
+  border: 1px solid var(--border-soft);
+  color: #FFFFFF;
+}
+body.admin-theme input:focus,
+body.admin-theme select:focus,
+body.admin-theme textarea:focus {
+  outline: none;
+  border-color: var(--sundt-red);
+  box-shadow: 0 0 0 3px rgba(239, 55, 62, 0.25);
+}
+body.admin-theme label { color: var(--text-soft); }
+body.admin-theme .muted { color: var(--text-dim); }
+body.admin-theme .err { color: #FF8A8F; }
+body.admin-theme .ok-msg { color: #4FD1A5; }
+
+/* ---------- buttons ---------- */
+
+body.admin-theme .btn {
+  background: var(--sundt-red);
+  color: #FFFFFF;
+  font-family: "Open Sans", sans-serif;
+  font-weight: 600;
+  border: none;
+  box-shadow: none;
+}
+body.admin-theme .btn:hover { opacity: 0.92; box-shadow: 0 2px 10px rgba(239,55,62,0.35); }
+body.admin-theme .btn:disabled { background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.5); }
+
+body.admin-theme .btn.secondary {
+  background: rgba(255,255,255,0.06);
+  color: #EDEEF2;
+  border: 1px solid var(--border-soft);
+}
+body.admin-theme .btn.secondary:hover { background: rgba(255,255,255,0.12); }
+
+body.admin-theme .btn.danger {
+  background: var(--sundt-red-dark);
+  color: #FFFFFF;
+}
+body.admin-theme .btn.danger:hover { opacity: 0.9; }
+
+body.admin-theme .btn.warn {
+  background: #B8722A;
+  color: #FFFFFF;
+}
+body.admin-theme .btn.warn:hover { opacity: 0.9; }
+
+/* ---------- pills / badges ---------- */
+
+body.admin-theme .pill {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid var(--border-soft);
+  color: #EDEEF2;
+}
+
+body.admin-theme .score-badge {
+  display: inline-block;
+  background: var(--sundt-red);
+  color: #FFFFFF;
+  font-weight: 700;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+body.admin-theme .status-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+body.admin-theme .status-badge.active { background: rgba(79,209,165,0.15); color: #4FD1A5; }
+body.admin-theme .status-badge.inactive { background: rgba(239,55,62,0.15); color: #FF8A8F; }
+
+/* ---------- header ---------- */
+
+body.admin-theme header.top {
+  background: var(--charcoal);
+  border-bottom: none;
+  padding: 12px 20px;
+}
+body.admin-theme header.top .pill {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.16);
+  color: #EDEEF2;
+}
+body.admin-theme header.top .btn.secondary {
+  background: rgba(255,255,255,0.06);
+  color: #EDEEF2;
+  border-color: rgba(255,255,255,0.18);
+}
+body.admin-theme header.top .btn.secondary:hover { background: rgba(255,255,255,0.12); }
+
+/* ---------- tabs ---------- */
+
+body.admin-theme .tabs {
+  border-bottom: 1px solid var(--border-soft);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+body.admin-theme .tab-btn {
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--text-dim);
+  font-family: "Open Sans", sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+body.admin-theme .tab-btn:hover { color: #FFFFFF; }
+body.admin-theme .tab-btn.active {
+  color: #FFFFFF;
+  border-bottom-color: var(--sundt-red);
+}
+
+/* ---------- tables ---------- */
+
+body.admin-theme table { border-collapse: collapse; width: 100%; }
+body.admin-theme thead th {
+  background: rgba(255,255,255,0.05);
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  text-align: left;
+  padding: 9px 10px;
+  border-bottom: 2px solid var(--sundt-red);
+  white-space: nowrap;
+}
+body.admin-theme tbody td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-soft);
+  color: #EDEEF2;
+  font-size: 13px;
+}
+body.admin-theme tbody tr:hover { background: rgba(255,255,255,0.04); cursor: default; }
+body.admin-theme tbody tr[data-clickable]:hover,
+body.admin-theme #leaderboardTable tbody tr:hover { cursor: pointer; }
+
+/* leaderboard rank highlighting */
+body.admin-theme td.rank-1 { color: #FFD966; font-weight: 700; }
+body.admin-theme td.rank-2 { color: #D7DCE4; font-weight: 700; }
+body.admin-theme td.rank-3 { color: #E3A15B; font-weight: 700; }
+
+/* ---------- stats (leaderboard summary row) ---------- */
+
+body.admin-theme .stat .num {
+  font-family: "Big Shoulders Display", sans-serif;
+  font-size: 30px;
+  color: var(--sundt-red);
+  line-height: 1;
+}
+body.admin-theme .stat .lbl {
+  color: var(--text-dim);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-top: 4px;
+}
+
+/* ---------- modal (team detail) ---------- */
+
+body.admin-theme .modal-backdrop { background: rgba(0,0,0,0.65); }
+body.admin-theme .modal {
+  background: var(--card-navy);
+  border: 1px solid var(--border-soft);
+  color: #EDEEF2;
+}
+
+/* ---------- misc form rows in teams/judges/categories tabs ---------- */
+
+body.admin-theme .nameInput,
+body.admin-theme .leadInput,
+body.admin-theme .membersInput,
+body.admin-theme .descInput,
+body.admin-theme .labelInput,
+body.admin-theme .weightInput {
+  background: var(--navy-deep);
+  border: 1px solid var(--border-soft);
+  color: #FFFFFF;
+}

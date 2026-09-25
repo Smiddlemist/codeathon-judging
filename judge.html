@@ -128,6 +128,21 @@
           </div>
         </div>
 
+        <!-- Admin-only: inline confirm panel for applying/removing a team penalty.
+             Replaces the old native prompt()/confirm() dialogs. -->
+        <div id="penaltyPanel" class="sc-section hidden" style="margin-bottom:12px;">
+          <h2 id="penaltyPanelTitle">Apply team penalty</h2>
+          <div id="penaltyApplyFields">
+            <label for="penaltyReasonInput">Reason (optional, shown in the admin console)</label>
+            <input id="penaltyReasonInput" type="text" placeholder="e.g. Team went over the time limit" />
+          </div>
+          <p id="penaltyPanelMsg" class="muted" style="font-size:12.5px;margin:8px 0 0;"></p>
+          <div class="row" style="justify-content:flex-end;margin-top:12px;">
+            <button id="penaltyPanelCancelBtn" class="btn secondary">Cancel</button>
+            <button id="penaltyPanelConfirmBtn" class="btn danger">Confirm</button>
+          </div>
+        </div>
+
         <div class="scorecard-actionbar">
           <div id="scoreErr" class="err hidden"></div>
           <div id="scoreOk" class="ok-msg hidden"></div>

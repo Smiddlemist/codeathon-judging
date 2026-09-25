@@ -23,6 +23,37 @@ let criteria = []; // [{id, label, weight, order}]
 let criteriaSeeded = false;
 let teamPenaltyValue = 0; // flat points deducted from a team's overall weighted score when penalized
 
+// Tracks whether each collection's FIRST snapshot has arrived yet, so tables
+// can show a "Loading…" state instead of a misleading empty flash before
+// data shows up.
+const loaded = { teams: false, judges: false, scores: false, criteria: false };
+function loadingRow(colspan) {
+  return `<tr><td colspan="${colspan}" class="muted">Loading…</td></tr>`;
+}
+
+// ---------- Idle timeout ----------
+// Same as judge.html: after this many milliseconds of no activity while
+// signed in, sign out and send the admin back to the poster landing page.
+// Keeps a shared/kiosk device from staying logged into the admin console
+// indefinitely. Change the number below to adjust the timeout.
+const IDLE_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
+let idleActive = false;
+let idleTimer = null;
+
+function resetIdleTimer() {
+  if (!idleActive) return;
+  if (idleTimer) clearTimeout(idleTimer);
+  idleTimer = setTimeout(async () => {
+    idleActive = false;
+    try { await signOut(auth); } catch (e) { /* already signed out elsewhere */ }
+    window.location.href = "index.html";
+  }, IDLE_TIMEOUT_MS);
+}
+
+["mousemove", "mousedown", "keydown", "touchstart", "scroll"].forEach((evt) => {
+  window.addEventListener(evt, resetIdleTimer, { passive: true });
+});
+
 const NOMINATION_LABELS = {
   recommend: "Recommend for further development",
   mostCreative: "Most creative / innovative",
@@ -48,6 +79,8 @@ onAuthStateChanged(auth, (user) => {
     dashboard.classList.remove("hidden");
     adminBadge.textContent = "👤 " + user.email;
     startListeners();
+    idleActive = true;
+    resetIdleTimer();
   } else {
     // Either signed out, or signed in as some other account elsewhere in this
     // browser (e.g. a judge's session in another tab, sharing the same
@@ -55,6 +88,8 @@ onAuthStateChanged(auth, (user) => {
     // don't sign anything out from a passive listener, since that would also
     // kill that other, legitimate session.
     dashboard.classList.add("hidden");
+    idleActive = false;
+    if (idleTimer) clearTimeout(idleTimer);
     window.location.href = "judge.html";
   }
 });
@@ -73,6 +108,7 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
 function startListeners() {
   onSnapshot(query(collection(db, "teams"), orderBy("name")), (snap) => {
     teams = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    loaded.teams = true;
     renderTeamsTable();
     renderResetSelects();
     renderLeaderboard();
@@ -82,12 +118,14 @@ function startListeners() {
   });
   onSnapshot(query(collection(db, "judges"), orderBy("name")), (snap) => {
     judges = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    loaded.judges = true;
     renderJudgesTable();
     renderResetSelects();
     renderMatrix();
   });
   onSnapshot(collection(db, "scores"), (snap) => {
     scores = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    loaded.scores = true;
     renderLeaderboard();
     renderMatrix();
     renderNominationsTable();
@@ -101,6 +139,7 @@ function startListeners() {
       criteriaSeeded = true;
       await seedDefaultCriteria();
     }
+    loaded.criteria = true;
     renderCritTable();
     renderLeaderboard();
     renderMatrix();
@@ -147,6 +186,13 @@ function renderLeaderboard() {
   document.getElementById("statJudges").textContent = judges.length;
 
   const headRow = document.getElementById("leaderboardHeadRow");
+  const tbody = document.querySelector("#leaderboardTable tbody");
+
+  if (!(loaded.teams && loaded.scores && loaded.criteria)) {
+    tbody.innerHTML = loadingRow(6);
+    return;
+  }
+
   headRow.innerHTML =
     "<th>#</th><th>Team</th><th>Lead</th><th># Judges</th><th>Weighted Score</th>" +
     criteria.map((c) => `<th title="${escapeHtml(c.description || "")}">${escapeHtml(c.label)}</th>`).join("");
@@ -172,7 +218,6 @@ function renderLeaderboard() {
   rows.sort((a, b) => b.weightedAvg - a.weightedAvg);
   lastLeaderboardRows = rows;
 
-  const tbody = document.querySelector("#leaderboardTable tbody");
   tbody.innerHTML = "";
   rows.forEach((r, i) => {
     const rankClass = i === 0 ? "rank-1" : i === 1 ? "rank-2" : i === 2 ? "rank-3" : "";
@@ -290,6 +335,11 @@ function csvCell(val) {
 function renderMatrix() {
   const thead = document.querySelector("#matrixTable thead");
   const tbody = document.querySelector("#matrixTable tbody");
+  if (!(loaded.teams && loaded.judges && loaded.scores)) {
+    thead.innerHTML = "";
+    tbody.innerHTML = loadingRow(1);
+    return;
+  }
   thead.innerHTML = "<tr><th>Judge</th>" + teams.map((t) => `<th>${escapeHtml(t.name)}</th>`).join("") + "</tr>";
   tbody.innerHTML = "";
   judges.forEach((j) => {
@@ -311,6 +361,11 @@ function renderNominationsTable() {
   const thead = table.querySelector("thead");
   const tbody = table.querySelector("tbody");
   const nomKeys = Object.keys(NOMINATION_LABELS);
+
+  if (!(loaded.teams && loaded.scores)) {
+    tbody.innerHTML = loadingRow(nomKeys.length + 2);
+    return;
+  }
 
   thead.innerHTML =
     "<tr><th>Team</th>" +
@@ -647,6 +702,10 @@ async function deleteAllJudges(list) {
 
 function renderJudgesTable() {
   const tbody = document.querySelector("#judgesTable tbody");
+  if (!loaded.judges) {
+    tbody.innerHTML = loadingRow(4);
+    return;
+  }
   tbody.innerHTML = "";
   judges.forEach((j) => {
     const isActive = j.active !== false;
@@ -868,6 +927,10 @@ document.getElementById("savePenaltyValueBtn").addEventListener("click", async (
 function renderPenaltiesTable() {
   const tbody = document.querySelector("#penaltiesTable tbody");
   if (!tbody) return; // tab not in the DOM yet on first paint
+  if (!loaded.teams) {
+    tbody.innerHTML = loadingRow(4);
+    return;
+  }
   const penalized = teams.filter((t) => typeof t.penalty === "number" && t.penalty > 0);
   tbody.innerHTML = "";
   if (penalized.length === 0) {
