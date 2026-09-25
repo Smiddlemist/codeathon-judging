@@ -61,6 +61,10 @@ loginBtn.addEventListener("click", async () => {
 
 logoutBtn.addEventListener("click", () => signOut(auth));
 
+document.getElementById("backToScorecardBtn").addEventListener("click", () => {
+  window.location.href = "judge.html";
+});
+
 onAuthStateChanged(auth, (user) => {
   if (user && user.email === ADMIN_EMAIL) {
     loginScreen.classList.add("hidden");

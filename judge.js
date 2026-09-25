@@ -6,18 +6,14 @@ import {
   collection, doc, getDoc, setDoc, updateDoc, deleteField, onSnapshot, query, orderBy
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 
-// ---------- Admin-console access via URL ----------
-// This query param is a UI convenience ONLY -- it decides whether the admin
-// button/penalty button are shown, nothing more. It never grants any actual
-// permission: every write those buttons trigger is still checked against the
-// signed-in Firebase Auth account's email (ADMIN_EMAIL) by the Firestore
-// security rules, exactly like admin.html already does. Change the param
-// name/value below any time -- it's just a shared "bookmark" for the admin,
-// not a secret credential.
-const ADMIN_URL_PARAM = "access";
-const ADMIN_URL_VALUE = "sundt-admin";
-const hasAdminUrlFlag = new URLSearchParams(window.location.search).get(ADMIN_URL_PARAM) === ADMIN_URL_VALUE;
-let showAdminUI = false; // true only when hasAdminUrlFlag AND signed in as ADMIN_EMAIL
+// ---------- Admin detection ----------
+// Same login screen for everyone. Whether the extra admin controls (Admin
+// Console button, team penalty button) show up depends ONLY on the signed-in
+// Firebase Auth account's email matching ADMIN_EMAIL -- no URL trick, no
+// separate login. Every write those controls trigger is still checked
+// against that same account by the Firestore security rules, so this is
+// real security, not just a hidden button.
+let showAdminUI = false; // true only when signed in as ADMIN_EMAIL
 let teamPenaltyValue = 0; // loaded from config/settings, admin-configured flat point deduction
 
 // ---------- element refs ----------
@@ -126,26 +122,32 @@ onAuthStateChanged(auth, async (user) => {
   }
 
   const isAdminAccount = user.email === ADMIN_EMAIL;
-  const judgeDocSnap = await getDoc(doc(db, "judges", user.uid));
+  let judgeDocSnap = await getDoc(doc(db, "judges", user.uid));
 
-  // The admin account normally has no "judges" record (it's not a judge), so
-  // it's exempt from the active-judge requirement below. Everyone else still
-  // needs an active judges/{uid} doc to sign in here.
-  if (!isAdminAccount && (!judgeDocSnap.exists() || judgeDocSnap.data().active === false)) {
+  if (isAdminAccount && !judgeDocSnap.exists()) {
+    // The admin account is also a full judge -- give it a real judges/{uid}
+    // record the first time it signs in here, so it scores teams, appears in
+    // the admin console's Judges list, and shows up in the Judge Coverage
+    // matrix exactly like anyone else.
+    await setDoc(doc(db, "judges", user.uid), {
+      name: "Admin", email: user.email, active: true, createdAt: Date.now()
+    });
+    judgeDocSnap = await getDoc(doc(db, "judges", user.uid));
+  }
+
+  if (!judgeDocSnap.exists() || judgeDocSnap.data().active === false) {
     loginErr.textContent = "This account isn't set up as an active judge. Contact the event admin.";
     loginErr.classList.remove("hidden");
     await signOut(auth);
     return;
   }
 
-  currentJudge = judgeDocSnap.exists()
-    ? { id: user.uid, ...judgeDocSnap.data() }
-    : { id: user.uid, name: "Admin", email: user.email };
+  currentJudge = { id: user.uid, ...judgeDocSnap.data() };
 
-  // UI-only gate: both the URL flag AND the authenticated admin email must be
-  // true. Firestore security rules are the actual enforcement for any write
-  // these buttons trigger -- this only controls what's visible.
-  showAdminUI = isAdminAccount && hasAdminUrlFlag;
+  // UI-only gate: purely whether this account's email is the admin email.
+  // Firestore security rules are the actual enforcement for any write these
+  // buttons trigger -- this only controls what's visible in this browser.
+  showAdminUI = isAdminAccount;
   adminConsoleBtn.classList.toggle("hidden", !showAdminUI);
 
   loginScreen.classList.add("hidden");
