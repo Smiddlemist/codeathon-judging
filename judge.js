@@ -16,6 +16,30 @@ import {
 let showAdminUI = false; // true only when signed in as ADMIN_EMAIL
 let teamPenaltyValue = 0; // loaded from config/settings, admin-configured flat point deduction
 
+// ---------- Idle timeout ----------
+// After this many milliseconds of no clicks/keystrokes/scrolling/touches
+// while signed in, we sign the person out and send them back to the poster
+// landing page (index.html). Meant for a shared/kiosk-style device at the
+// event so one person's session doesn't stay open indefinitely. Change the
+// number below to adjust the timeout.
+const IDLE_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
+let idleActive = false;
+let idleTimer = null;
+
+function resetIdleTimer() {
+  if (!idleActive) return;
+  if (idleTimer) clearTimeout(idleTimer);
+  idleTimer = setTimeout(async () => {
+    idleActive = false;
+    try { await signOut(auth); } catch (e) { /* already signed out elsewhere */ }
+    window.location.href = "index.html";
+  }, IDLE_TIMEOUT_MS);
+}
+
+["mousemove", "mousedown", "keydown", "touchstart", "scroll"].forEach((evt) => {
+  window.addEventListener(evt, resetIdleTimer, { passive: true });
+});
+
 // ---------- element refs ----------
 const loginScreen = document.getElementById("loginScreen");
 const emailInput = document.getElementById("emailInput");
@@ -118,6 +142,8 @@ onAuthStateChanged(auth, async (user) => {
     loginScreen.classList.remove("hidden");
     currentJudge = null;
     showAdminUI = false;
+    idleActive = false;
+    if (idleTimer) clearTimeout(idleTimer);
     return;
   }
 
@@ -158,6 +184,8 @@ onAuthStateChanged(auth, async (user) => {
   loadMyScores();
   if (showAdminUI) loadPenaltyConfig();
   flushPendingSaves();
+  idleActive = true;
+  resetIdleTimer();
 });
 
 adminConsoleBtn.addEventListener("click", () => {
