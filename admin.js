@@ -1,6 +1,6 @@
 import {
   auth, db, ADMIN_EMAIL, DEFAULT_CRITERIA, firebaseConfig,
-  signInWithEmailAndPassword, sendPasswordResetEmail, onAuthStateChanged, signOut
+  sendPasswordResetEmail, onAuthStateChanged, signOut
 } from "./firebase-init.js";
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
 import {
@@ -11,12 +11,8 @@ import {
   writeBatch, getDocs
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 
-const loginScreen = document.getElementById("loginScreen");
+const notAdminScreen = document.getElementById("notAdminScreen");
 const dashboard = document.getElementById("dashboard");
-const emailInput = document.getElementById("emailInput");
-const passInput = document.getElementById("passInput");
-const loginBtn = document.getElementById("loginBtn");
-const loginErr = document.getElementById("loginErr");
 const logoutBtn = document.getElementById("logoutBtn");
 const adminBadge = document.getElementById("adminBadge");
 
@@ -36,29 +32,10 @@ const NOMINATION_LABELS = {
 };
 
 // ---------- Auth ----------
-loginBtn.addEventListener("click", async () => {
-  loginErr.classList.add("hidden");
-  loginBtn.disabled = true;
-  try {
-    const cred = await signInWithEmailAndPassword(auth, emailInput.value.trim(), passInput.value);
-    if (cred.user.email !== ADMIN_EMAIL) {
-      // Only reject here, as a direct result of THIS sign-in attempt -- not from
-      // onAuthStateChanged below, which also fires for auth changes happening in
-      // other tabs (e.g. a judge signing in to judge.html shares this same
-      // browser's auth session). Signing out there would kill that other,
-      // perfectly legitimate session too.
-      await signOut(auth);
-      loginErr.textContent = "This account is not authorized as admin.";
-      loginErr.classList.remove("hidden");
-    }
-  } catch (e) {
-    loginErr.textContent = "Sign-in failed. Check the email/password.";
-    loginErr.classList.remove("hidden");
-  } finally {
-    loginBtn.disabled = false;
-  }
-});
-
+// admin.html has no login form of its own -- the only supported entry point
+// is signing in at judge.html and clicking "Admin Console." If someone lands
+// here directly without an active admin session, we send them there instead
+// of showing a redundant second login screen.
 logoutBtn.addEventListener("click", () => signOut(auth));
 
 document.getElementById("backToScorecardBtn").addEventListener("click", () => {
@@ -67,18 +44,18 @@ document.getElementById("backToScorecardBtn").addEventListener("click", () => {
 
 onAuthStateChanged(auth, (user) => {
   if (user && user.email === ADMIN_EMAIL) {
-    loginScreen.classList.add("hidden");
+    notAdminScreen.classList.add("hidden");
     dashboard.classList.remove("hidden");
     adminBadge.textContent = "👤 " + user.email;
     startListeners();
   } else {
     // Either signed out, or signed in as some other account elsewhere in this
-    // browser (e.g. a judge's session in another tab, sharing the same Firebase
-    // Auth session). Either way, just show the admin login screen here --
+    // browser (e.g. a judge's session in another tab, sharing the same
+    // Firebase Auth session). Either way, bounce to the single sign-in page --
     // don't sign anything out from a passive listener, since that would also
     // kill that other, legitimate session.
     dashboard.classList.add("hidden");
-    loginScreen.classList.remove("hidden");
+    window.location.href = "judge.html";
   }
 });
 
