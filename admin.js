@@ -7,7 +7,7 @@ import {
   getAuth, createUserWithEmailAndPassword, signOut as secondarySignOut
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
 import {
-  collection, doc, addDoc, setDoc, deleteDoc, updateDoc, onSnapshot, query, orderBy,
+  collection, doc, addDoc, setDoc, deleteDoc, updateDoc, deleteField, onSnapshot, query, orderBy,
   writeBatch, getDocs
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 
@@ -25,6 +25,7 @@ let judges = [];
 let scores = [];
 let criteria = []; // [{id, label, weight, order}]
 let criteriaSeeded = false;
+let teamPenaltyValue = 0; // flat points deducted from a team's overall weighted score when penalized
 
 const NOMINATION_LABELS = {
   recommend: "Recommend for further development",
@@ -96,6 +97,7 @@ function startListeners() {
     renderLeaderboard();
     renderMatrix();
     renderNominationsTable();
+    renderPenaltiesTable();
   });
   onSnapshot(query(collection(db, "judges"), orderBy("name")), (snap) => {
     judges = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -121,6 +123,14 @@ function startListeners() {
     renderCritTable();
     renderLeaderboard();
     renderMatrix();
+  });
+  onSnapshot(doc(db, "config", "settings"), (snap) => {
+    teamPenaltyValue = snap.exists() && typeof snap.data().teamPenaltyValue === "number"
+      ? snap.data().teamPenaltyValue
+      : 0;
+    const input = document.getElementById("penaltyValueInput");
+    if (input && document.activeElement !== input) input.value = teamPenaltyValue;
+    renderLeaderboard();
   });
 }
 
@@ -163,9 +173,11 @@ function renderLeaderboard() {
   const rows = teams.map((team) => {
     const teamScores = scores.filter((s) => s.teamId === team.id);
     const n = teamScores.length;
-    const weightedAvg = n
+    const rawAvg = n
       ? teamScores.reduce((a, s) => a + weightedScoreOf(s), 0) / n
       : 0;
+    const penalty = typeof team.penalty === "number" ? team.penalty : 0;
+    const weightedAvg = Math.max(0, rawAvg - penalty);
     const critAvgs = {};
     criteria.forEach((c) => {
       const vals = teamScores
@@ -173,7 +185,7 @@ function renderLeaderboard() {
         .filter((v) => typeof v === "number");
       critAvgs[c.id] = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
     });
-    return { team, n, weightedAvg, critAvgs };
+    return { team, n, weightedAvg, rawAvg, penalty, critAvgs };
   });
 
   rows.sort((a, b) => b.weightedAvg - a.weightedAvg);
@@ -190,7 +202,7 @@ function renderLeaderboard() {
       <td>${escapeHtml(r.team.name)}</td>
       <td class="muted">${escapeHtml(r.team.lead || "—")}</td>
       <td>${r.n}</td>
-      <td><strong>${r.weightedAvg.toFixed(1)}</strong></td>
+      <td><strong>${r.weightedAvg.toFixed(1)}</strong>${r.penalty ? ` <span class="pill" title="Raw score ${r.rawAvg.toFixed(1)} minus ${r.penalty}-pt penalty" style="background:#c0392b;color:#fff;">-${r.penalty}</span>` : ""}</td>
       ${criteria.map((c) => `<td>${r.critAvgs[c.id] === null ? "—" : r.critAvgs[c.id].toFixed(1)}</td>`).join("")}
     `;
     tr.addEventListener("click", () => openTeamDetail(r.team));
@@ -215,6 +227,9 @@ function openTeamDetail(team) {
   detailTeamLead.textContent = metaParts.length ? metaParts.join("   \u00b7   ") : "\u2014";
   if (team.description) {
     detailTeamLead.innerHTML += `<div style="margin-top:6px;">${escapeHtml(team.description)}</div>`;
+  }
+  if (typeof team.penalty === "number" && team.penalty > 0) {
+    detailTeamLead.innerHTML += `<div style="margin-top:6px;"><span class="pill" style="background:#c0392b;color:#fff;">Penalty applied: -${team.penalty}</span></div>`;
   }
   const teamScores = scores.filter((s) => s.teamId === team.id);
 
@@ -259,7 +274,7 @@ function openTeamDetail(team) {
 
 // ---------- CSV export ----------
 document.getElementById("exportCsvBtn").addEventListener("click", () => {
-  const headers = ["Rank", "Team", "Lead", "# Judges", "Weighted Score", ...criteria.map((c) => c.label)];
+  const headers = ["Rank", "Team", "Lead", "# Judges", "Weighted Score", "Penalty", ...criteria.map((c) => c.label)];
   const lines = [headers.map(csvCell).join(",")];
   lastLeaderboardRows.forEach((r, i) => {
     const row = [
@@ -268,6 +283,7 @@ document.getElementById("exportCsvBtn").addEventListener("click", () => {
       r.team.lead || "",
       r.n,
       r.weightedAvg.toFixed(2),
+      r.penalty ? `-${r.penalty}` : "",
       ...criteria.map((c) => (r.critAvgs[c.id] === null ? "" : r.critAvgs[c.id].toFixed(2)))
     ];
     lines.push(row.map(csvCell).join(","));
@@ -839,6 +855,44 @@ async function deleteAllScores(list) {
     chunk.forEach((s) => batch.delete(doc(db, "scores", s.id)));
     await batch.commit();
   }
+}
+
+// ---------- Team penalties ----------
+document.getElementById("savePenaltyValueBtn").addEventListener("click", async () => {
+  const input = document.getElementById("penaltyValueInput");
+  const okEl = document.getElementById("penaltyValueOk");
+  const val = Number(input.value);
+  if (!(val >= 0)) {
+    alert("Penalty amount must be zero or a positive number.");
+    return;
+  }
+  await setDoc(doc(db, "config", "settings"), { teamPenaltyValue: val }, { merge: true });
+  okEl.classList.remove("hidden");
+  setTimeout(() => okEl.classList.add("hidden"), 2000);
+});
+
+function renderPenaltiesTable() {
+  const tbody = document.querySelector("#penaltiesTable tbody");
+  if (!tbody) return; // tab not in the DOM yet on first paint
+  const penalized = teams.filter((t) => typeof t.penalty === "number" && t.penalty > 0);
+  tbody.innerHTML = "";
+  if (penalized.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="3" class="muted">No teams currently penalized.</td></tr>`;
+    return;
+  }
+  penalized.forEach((t) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${escapeHtml(t.name)}</td>
+      <td>-${t.penalty}</td>
+      <td><button class="btn danger small removePenaltyBtn">Remove</button></td>
+    `;
+    tr.querySelector(".removePenaltyBtn").addEventListener("click", async () => {
+      if (!confirm(`Remove the penalty from "${t.name}"?`)) return;
+      await updateDoc(doc(db, "teams", t.id), { penalty: deleteField() });
+    });
+    tbody.appendChild(tr);
+  });
 }
 
 function escapeHtml(str) {

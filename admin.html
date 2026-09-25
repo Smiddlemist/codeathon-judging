@@ -45,6 +45,7 @@
       <button class="tab-btn" data-tab="teams">🏗️ Teams</button>
       <button class="tab-btn" data-tab="judges">👩‍⚖️ Judges</button>
       <button class="tab-btn" data-tab="categories">⚖️ Categories</button>
+      <button class="tab-btn" data-tab="penalties">⚠️ Penalties</button>
       <button class="tab-btn" data-tab="reset">♻️ Reset Scores</button>
     </div>
 
@@ -173,6 +174,32 @@
         <h2 style="margin-top:0;">Current categories</h2>
         <p class="muted" style="font-size:13px;">Changing a weight recalculates the leaderboard immediately for all existing scores.</p>
         <div id="critList"></div>
+      </div>
+    </div>
+
+    <!-- Penalties -->
+    <div class="tab-panel" id="tab-penalties">
+      <div class="card">
+        <h2 style="margin-top:0;">Team penalty amount</h2>
+        <p class="muted" style="font-size:13px;">
+          A flat number of points subtracted from a team's overall weighted score (out of 5) when a penalty is
+          applied. The same amount applies to every team -- judges never see this, only the admin account does,
+          via the "Apply Team Penalty" button on the scorecard.
+        </p>
+        <div class="row">
+          <div style="flex:1;"><label>Penalty amount (points)</label><input id="penaltyValueInput" type="number" min="0" step="0.1" value="0" /></div>
+          <button id="savePenaltyValueBtn" class="btn" style="align-self:flex-end;">Save</button>
+        </div>
+        <div id="penaltyValueOk" class="ok-msg hidden">Saved.</div>
+      </div>
+      <div class="card">
+        <h2 style="margin-top:0;">Teams currently penalized</h2>
+        <div class="table-scroll">
+          <table id="penaltiesTable">
+            <thead><tr><th>Team</th><th>Penalty</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </div>
     </div>
 

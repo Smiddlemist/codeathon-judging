@@ -16,7 +16,7 @@
 <div id="loginScreen" class="center-screen">
   <div class="card landing-card">
     <img class="sundt-logo-full" src="sundt-logo-full.png" alt="Sundt — Skill. Grit. Purpose." />
-    <h1>Judge sign in</h1>
+    <h1>Sign in</h1>
     <p>Use the email and password set up for you by the event admin.</p>
 
     <label for="emailInput">Email</label>
@@ -47,6 +47,7 @@
     </div>
     <div class="row">
       <span id="judgeBadge" class="pill"></span>
+      <button id="adminConsoleBtn" class="btn secondary small hidden">Admin Console</button>
       <button id="signOutBtn" class="btn secondary small">Sign out</button>
       <a href="index.html" class="btn secondary small">Home</a>
     </div>
@@ -81,6 +82,7 @@
           <div class="name" id="scTeamName"></div>
           <div class="lead" id="scTeamMeta"></div>
           <p class="team-description" id="scTeamDescription"></p>
+          <div id="penaltyBadge" class="pill hidden" style="background:#c0392b;color:#fff;"></div>
         </div>
 
         <div class="scorecard-body">
@@ -128,6 +130,7 @@
         <div class="scorecard-actionbar">
           <div id="scoreErr" class="err hidden"></div>
           <div id="scoreOk" class="ok-msg hidden"></div>
+          <button id="applyPenaltyBtn" class="btn danger small hidden" style="margin-right:12px;">Apply Team Penalty</button>
           <div class="row" style="margin-left:auto;">
             <button id="cancelScoreBtn" class="btn secondary">Cancel</button>
             <button id="submitScoreBtn" class="btn">Save score</button>

@@ -1,10 +1,24 @@
 import {
-  auth, db, signInWithEmailAndPassword, sendPasswordResetEmail,
+  auth, db, ADMIN_EMAIL, signInWithEmailAndPassword, sendPasswordResetEmail,
   onAuthStateChanged, signOut
 } from "./firebase-init.js";
 import {
-  collection, doc, getDoc, setDoc, onSnapshot, query, orderBy
+  collection, doc, getDoc, setDoc, updateDoc, deleteField, onSnapshot, query, orderBy
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
+
+// ---------- Admin-console access via URL ----------
+// This query param is a UI convenience ONLY -- it decides whether the admin
+// button/penalty button are shown, nothing more. It never grants any actual
+// permission: every write those buttons trigger is still checked against the
+// signed-in Firebase Auth account's email (ADMIN_EMAIL) by the Firestore
+// security rules, exactly like admin.html already does. Change the param
+// name/value below any time -- it's just a shared "bookmark" for the admin,
+// not a secret credential.
+const ADMIN_URL_PARAM = "access";
+const ADMIN_URL_VALUE = "sundt-admin";
+const hasAdminUrlFlag = new URLSearchParams(window.location.search).get(ADMIN_URL_PARAM) === ADMIN_URL_VALUE;
+let showAdminUI = false; // true only when hasAdminUrlFlag AND signed in as ADMIN_EMAIL
+let teamPenaltyValue = 0; // loaded from config/settings, admin-configured flat point deduction
 
 // ---------- element refs ----------
 const loginScreen = document.getElementById("loginScreen");
@@ -17,6 +31,7 @@ const forgotBtn = document.getElementById("forgotBtn");
 const judgeApp = document.getElementById("judgeApp");
 const judgeBadge = document.getElementById("judgeBadge");
 const signOutBtn = document.getElementById("signOutBtn");
+const adminConsoleBtn = document.getElementById("adminConsoleBtn");
 
 const teamsList = document.getElementById("teamsList");
 const noTeamsMsg = document.getElementById("noTeamsMsg");
@@ -41,6 +56,8 @@ const submitScoreBtn = document.getElementById("submitScoreBtn");
 const scoreErr = document.getElementById("scoreErr");
 const scoreOk = document.getElementById("scoreOk");
 const unsavedTag = document.getElementById("unsavedTag");
+const applyPenaltyBtn = document.getElementById("applyPenaltyBtn");
+const penaltyBadge = document.getElementById("penaltyBadge");
 
 const NOMINATION_OPTIONS = [
   { key: "recommend", label: "Recommend for further development" },
@@ -104,24 +121,55 @@ onAuthStateChanged(auth, async (user) => {
     judgeApp.classList.add("hidden");
     loginScreen.classList.remove("hidden");
     currentJudge = null;
+    showAdminUI = false;
     return;
   }
+
+  const isAdminAccount = user.email === ADMIN_EMAIL;
   const judgeDocSnap = await getDoc(doc(db, "judges", user.uid));
-  if (!judgeDocSnap.exists() || judgeDocSnap.data().active === false) {
+
+  // The admin account normally has no "judges" record (it's not a judge), so
+  // it's exempt from the active-judge requirement below. Everyone else still
+  // needs an active judges/{uid} doc to sign in here.
+  if (!isAdminAccount && (!judgeDocSnap.exists() || judgeDocSnap.data().active === false)) {
     loginErr.textContent = "This account isn't set up as an active judge. Contact the event admin.";
     loginErr.classList.remove("hidden");
     await signOut(auth);
     return;
   }
-  currentJudge = { id: user.uid, ...judgeDocSnap.data() };
+
+  currentJudge = judgeDocSnap.exists()
+    ? { id: user.uid, ...judgeDocSnap.data() }
+    : { id: user.uid, name: "Admin", email: user.email };
+
+  // UI-only gate: both the URL flag AND the authenticated admin email must be
+  // true. Firestore security rules are the actual enforcement for any write
+  // these buttons trigger -- this only controls what's visible.
+  showAdminUI = isAdminAccount && hasAdminUrlFlag;
+  adminConsoleBtn.classList.toggle("hidden", !showAdminUI);
+
   loginScreen.classList.add("hidden");
   judgeApp.classList.remove("hidden");
   judgeBadge.textContent = "Signed in as " + currentJudge.name;
   loadTeams();
   loadCriteria();
   loadMyScores();
+  if (showAdminUI) loadPenaltyConfig();
   flushPendingSaves();
 });
+
+adminConsoleBtn.addEventListener("click", () => {
+  window.location.href = "admin.html";
+});
+
+function loadPenaltyConfig() {
+  onSnapshot(doc(db, "config", "settings"), (snap) => {
+    teamPenaltyValue = snap.exists() && typeof snap.data().teamPenaltyValue === "number"
+      ? snap.data().teamPenaltyValue
+      : 0;
+    if (currentTeam) updatePenaltyUI();
+  });
+}
 
 window.addEventListener("online", flushPendingSaves);
 
@@ -145,6 +193,13 @@ window.addEventListener("beforeunload", (e) => {
 function loadTeams() {
   onSnapshot(query(collection(db, "teams"), orderBy("name")), (snap) => {
     teams = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    if (currentTeam) {
+      const fresh = teams.find((t) => t.id === currentTeam.id);
+      if (fresh) {
+        currentTeam.penalty = fresh.penalty;
+        updatePenaltyUI();
+      }
+    }
     renderTeamsRail();
   });
 }
@@ -397,11 +452,52 @@ function openScorecard(team) {
   }
   refreshDirtyIndicator();
 
+  updatePenaltyUI();
+
   emptyState.classList.add("hidden");
   scorecardContent.classList.remove("hidden");
   renderTeamsRail(); // refresh active-highlight
   scorecardContent.scrollTo({ top: 0, behavior: "auto" });
 }
+
+// ---------- Team penalty (admin-only) ----------
+function updatePenaltyUI() {
+  if (!showAdminUI || !currentTeam) {
+    applyPenaltyBtn.classList.add("hidden");
+    penaltyBadge.classList.add("hidden");
+    return;
+  }
+  const hasPenalty = typeof currentTeam.penalty === "number" && currentTeam.penalty > 0;
+  applyPenaltyBtn.classList.remove("hidden");
+  applyPenaltyBtn.textContent = hasPenalty
+    ? `Remove Team Penalty (-${currentTeam.penalty})`
+    : `Apply Team Penalty (-${teamPenaltyValue})`;
+  penaltyBadge.classList.toggle("hidden", !hasPenalty);
+  if (hasPenalty) penaltyBadge.textContent = `Penalty applied: -${currentTeam.penalty}`;
+}
+
+applyPenaltyBtn.addEventListener("click", async () => {
+  if (!showAdminUI || !currentTeam) return;
+  const hasPenalty = typeof currentTeam.penalty === "number" && currentTeam.penalty > 0;
+  applyPenaltyBtn.disabled = true;
+  try {
+    if (hasPenalty) {
+      if (!confirm(`Remove the ${currentTeam.penalty}-point penalty from "${currentTeam.name}"?`)) return;
+      await updateDoc(doc(db, "teams", currentTeam.id), { penalty: deleteField() });
+      currentTeam.penalty = undefined;
+    } else {
+      if (!confirm(`Apply a ${teamPenaltyValue}-point penalty to "${currentTeam.name}"'s overall score? This affects the leaderboard immediately for everyone.`)) return;
+      await updateDoc(doc(db, "teams", currentTeam.id), { penalty: teamPenaltyValue });
+      currentTeam.penalty = teamPenaltyValue;
+    }
+    updatePenaltyUI();
+  } catch (e) {
+    console.error(e);
+    alert("Couldn't update the penalty. Check your connection and try again.");
+  } finally {
+    applyPenaltyBtn.disabled = false;
+  }
+});
 
 function closeScorecard(persistDraft = true) {
   if (persistDraft) saveDraftLocally();
