@@ -3,18 +3,84 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Code-A-Thon Judging</title>
-<link rel="stylesheet" href="style.css" />
+<title>Sundt Code-A-Thon</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600&family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --sundt-red: #EF373E;
+    --sundt-navy: #16305A;
+    --sundt-charcoal: #333333;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: var(--sundt-navy);
+    font-family: "Open Sans", sans-serif;
+  }
+  a.poster-link {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    min-height: 100vh;
+    padding: 32px 16px;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .poster-img {
+    max-width: 100%;
+    max-height: 72vh;
+    width: auto;
+    height: auto;
+    border-radius: 12px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+    transition: transform 0.15s ease;
+  }
+  a.poster-link:hover .poster-img,
+  a.poster-link:focus .poster-img {
+    transform: scale(1.015);
+  }
+  .enter-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-family: "Big Shoulders Display", sans-serif;
+    font-weight: 600;
+    font-size: 22px;
+    letter-spacing: 0.5px;
+    color: #fff;
+    background: var(--sundt-red);
+    padding: 14px 32px;
+    border-radius: 999px;
+    box-shadow: 0 6px 18px rgba(239,55,62,0.4);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  a.poster-link:hover .enter-btn,
+  a.poster-link:focus .enter-btn {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 24px rgba(239,55,62,0.5);
+  }
+  .enter-btn .arrow {
+    font-size: 20px;
+    transition: transform 0.15s ease;
+  }
+  a.poster-link:hover .enter-btn .arrow,
+  a.poster-link:focus .enter-btn .arrow {
+    transform: translateX(4px);
+  }
+</style>
 </head>
 <body>
-  <div class="center-screen">
-    <div class="card landing-card">
-      <div class="logo">🏆</div>
-      <h1>Code-A-Thon Judging</h1>
-      <p>Score teams, track results, manage the event.</p>
-      <a class="btn" href="judge.html">👩‍⚖️ I'm a Judge</a>
-      <a class="btn secondary" href="admin.html">🔐 Admin Console</a>
-    </div>
-  </div>
+
+<a class="poster-link" href="judge.html" aria-label="Enter the Code-A-Thon scorecard">
+  <img class="poster-img" src="codeathon-poster.png" alt="Sundt Code-A-Thon" />
+  <span class="enter-btn">Enter Scorecard <span class="arrow">&rarr;</span></span>
+</a>
+
 </body>
 </html>
