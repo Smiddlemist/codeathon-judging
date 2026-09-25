@@ -206,7 +206,7 @@ function renderLeaderboard() {
       <td>${escapeHtml(r.team.name)}</td>
       <td class="muted">${escapeHtml(r.team.lead || "—")}</td>
       <td>${r.n}</td>
-      <td><strong>${r.weightedAvg.toFixed(1)}</strong>${r.penalty ? ` <span class="pill" title="Raw score ${r.rawAvg.toFixed(1)} minus ${r.penalty}-pt penalty" style="background:#c0392b;color:#fff;">-${r.penalty}</span>` : ""}</td>
+      <td><strong>${r.weightedAvg.toFixed(1)}</strong>${r.penalty ? ` <span class="pill" title="Raw score ${r.rawAvg.toFixed(1)} minus ${r.penalty}-pt penalty${r.team.penaltyReason ? ": " + escapeHtml(r.team.penaltyReason) : ""}" style="background:#c0392b;color:#fff;">-${r.penalty}</span>` : ""}</td>
       ${criteria.map((c) => `<td>${r.critAvgs[c.id] === null ? "—" : r.critAvgs[c.id].toFixed(1)}</td>`).join("")}
     `;
     tr.addEventListener("click", () => openTeamDetail(r.team));
@@ -233,7 +233,7 @@ function openTeamDetail(team) {
     detailTeamLead.innerHTML += `<div style="margin-top:6px;">${escapeHtml(team.description)}</div>`;
   }
   if (typeof team.penalty === "number" && team.penalty > 0) {
-    detailTeamLead.innerHTML += `<div style="margin-top:6px;"><span class="pill" style="background:#c0392b;color:#fff;">Penalty applied: -${team.penalty}</span></div>`;
+    detailTeamLead.innerHTML += `<div style="margin-top:6px;"><span class="pill" style="background:#c0392b;color:#fff;">Penalty applied: -${team.penalty}</span>${team.penaltyReason ? ` <span class="muted">${escapeHtml(team.penaltyReason)}</span>` : ""}</div>`;
   }
   const teamScores = scores.filter((s) => s.teamId === team.id);
 
@@ -278,7 +278,7 @@ function openTeamDetail(team) {
 
 // ---------- CSV export ----------
 document.getElementById("exportCsvBtn").addEventListener("click", () => {
-  const headers = ["Rank", "Team", "Lead", "# Judges", "Weighted Score", "Penalty", ...criteria.map((c) => c.label)];
+  const headers = ["Rank", "Team", "Lead", "# Judges", "Weighted Score", "Penalty", "Penalty Reason", ...criteria.map((c) => c.label)];
   const lines = [headers.map(csvCell).join(",")];
   lastLeaderboardRows.forEach((r, i) => {
     const row = [
@@ -288,6 +288,7 @@ document.getElementById("exportCsvBtn").addEventListener("click", () => {
       r.n,
       r.weightedAvg.toFixed(2),
       r.penalty ? `-${r.penalty}` : "",
+      r.penalty ? (r.team.penaltyReason || "") : "",
       ...criteria.map((c) => (r.critAvgs[c.id] === null ? "" : r.critAvgs[c.id].toFixed(2)))
     ];
     lines.push(row.map(csvCell).join(","));
@@ -865,14 +866,26 @@ async function deleteAllScores(list) {
 document.getElementById("savePenaltyValueBtn").addEventListener("click", async () => {
   const input = document.getElementById("penaltyValueInput");
   const okEl = document.getElementById("penaltyValueOk");
+  const errEl = document.getElementById("penaltyValueErr");
+  errEl.classList.add("hidden");
+  okEl.classList.add("hidden");
   const val = Number(input.value);
   if (!(val >= 0)) {
-    alert("Penalty amount must be zero or a positive number.");
+    errEl.textContent = "Penalty amount must be zero or a positive number.";
+    errEl.classList.remove("hidden");
     return;
   }
-  await setDoc(doc(db, "config", "settings"), { teamPenaltyValue: val }, { merge: true });
-  okEl.classList.remove("hidden");
-  setTimeout(() => okEl.classList.add("hidden"), 2000);
+  try {
+    await setDoc(doc(db, "config", "settings"), { teamPenaltyValue: val }, { merge: true });
+    okEl.classList.remove("hidden");
+    setTimeout(() => okEl.classList.add("hidden"), 2000);
+  } catch (e) {
+    console.error(e);
+    errEl.textContent = e.code === "permission-denied"
+      ? "Save failed: permission denied. Your Firestore rules need a rule for the \"config\" collection allowing the admin account to write it."
+      : "Couldn't save the penalty amount. Check your connection and try again.";
+    errEl.classList.remove("hidden");
+  }
 });
 
 function renderPenaltiesTable() {
@@ -881,7 +894,7 @@ function renderPenaltiesTable() {
   const penalized = teams.filter((t) => typeof t.penalty === "number" && t.penalty > 0);
   tbody.innerHTML = "";
   if (penalized.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="3" class="muted">No teams currently penalized.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="4" class="muted">No teams currently penalized.</td></tr>`;
     return;
   }
   penalized.forEach((t) => {
@@ -889,11 +902,17 @@ function renderPenaltiesTable() {
     tr.innerHTML = `
       <td>${escapeHtml(t.name)}</td>
       <td>-${t.penalty}</td>
+      <td class="muted">${escapeHtml(t.penaltyReason || "—")}</td>
       <td><button class="btn danger small removePenaltyBtn">Remove</button></td>
     `;
     tr.querySelector(".removePenaltyBtn").addEventListener("click", async () => {
       if (!confirm(`Remove the penalty from "${t.name}"?`)) return;
-      await updateDoc(doc(db, "teams", t.id), { penalty: deleteField() });
+      try {
+        await updateDoc(doc(db, "teams", t.id), { penalty: deleteField(), penaltyReason: deleteField() });
+      } catch (e) {
+        console.error(e);
+        alert("Couldn't remove the penalty. Check your connection and try again.");
+      }
     });
     tbody.appendChild(tr);
   });
