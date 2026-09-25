@@ -187,9 +187,11 @@ body.judge-theme header.top .btn.secondary:hover { background: rgba(255,255,255,
   justify-content: center;
   min-height: 400px;
   border-radius: 12px;
+  background-color: var(--navy);
   background-image: linear-gradient(rgba(20,20,20,0.15), rgba(20,20,20,0.35)), url('codeathon-poster.png');
-  background-size: cover;
-  background-position: center top;
+  background-size: cover, contain;
+  background-repeat: no-repeat, no-repeat;
+  background-position: center, center;
 }
 .empty-state-inner {
   text-align: center;
