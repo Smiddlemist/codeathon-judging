@@ -1,5 +1,5 @@
 import {
-  auth, db, ADMIN_EMAIL, DEFAULT_CRITERIA, firebaseConfig,
+  auth, db, ADMIN_EMAIL, firebaseConfig,
   sendPasswordResetEmail, onAuthStateChanged, signOut
 } from "./firebase-init.js";
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
@@ -21,7 +21,6 @@ let judges = [];
 let scores = [];
 let criteria = []; // [{id, label, weight, description, levels, order}]  levels = array of 5 strings (score 1..5), or [] if not set
 const LEVEL_COUNT = 5;
-let criteriaSeeded = false;
 let teamPenaltyValue = 0; // flat points deducted from a team's overall weighted score when penalized
 
 // Tracks whether each collection's FIRST snapshot has arrived yet, so tables
@@ -132,14 +131,10 @@ function startListeners() {
     renderNominationsTable();
     document.getElementById("statScores").textContent = scores.length;
   });
-  onSnapshot(collection(db, "criteria"), async (snap) => {
+  onSnapshot(collection(db, "criteria"), (snap) => {
     criteria = snap.docs
       .map((d) => ({ id: d.id, ...d.data() }))
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-    if (criteria.length === 0 && !criteriaSeeded) {
-      criteriaSeeded = true;
-      await seedDefaultCriteria();
-    }
     loaded.criteria = true;
     renderCritTable();
     renderLeaderboard();
@@ -153,14 +148,6 @@ function startListeners() {
     if (input && document.activeElement !== input) input.value = teamPenaltyValue;
     renderLeaderboard();
   });
-}
-
-async function seedDefaultCriteria() {
-  const existing = await getDocs(collection(db, "criteria"));
-  if (!existing.empty) return; // guard against a race
-  for (let i = 0; i < DEFAULT_CRITERIA.length; i++) {
-    await addDoc(collection(db, "criteria"), { ...DEFAULT_CRITERIA[i], order: i, createdAt: Date.now() });
-  }
 }
 
 // ---------- Weighted scoring ----------
@@ -793,26 +780,11 @@ document.getElementById("addCritBtn").addEventListener("click", async () => {
   }
 });
 
-document.getElementById("loadDefaultsBtn").addEventListener("click", async () => {
-  const msg = criteria.length
-    ? "This replaces ALL current categories with the 10 recommended defaults (Business Need Alignment, User Value and Impact, Functionality, and so on). Scorecards already submitted keep their recorded values, but existing categories will stop counting once replaced. Continue?"
-    : "Load the 10 recommended default categories?";
-  if (!confirm(msg)) return;
-  if (criteria.length) {
-    const batch = writeBatch(db);
-    criteria.forEach((c) => batch.delete(doc(db, "criteria", c.id)));
-    await batch.commit();
-  }
-  for (let i = 0; i < DEFAULT_CRITERIA.length; i++) {
-    await addDoc(collection(db, "criteria"), { ...DEFAULT_CRITERIA[i], order: i, createdAt: Date.now() });
-  }
-});
-
 function renderCritTable() {
   const container = document.getElementById("critList");
   container.innerHTML = "";
   if (criteria.length === 0) {
-    container.innerHTML = `<p class="muted">No categories yet. Add one above, or click "Load recommended defaults."</p>`;
+    container.innerHTML = `<p class="muted">No categories yet. Import them from an Excel file above, or add one manually.</p>`;
     return;
   }
   criteria.forEach((c, idx) => {

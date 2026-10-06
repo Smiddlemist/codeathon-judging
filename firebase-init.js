@@ -40,64 +40,10 @@ export const firebaseConfig = {
 // the admin (step 6 above). It's also referenced in the Firestore rules.
 export const ADMIN_EMAIL = "smiddlemist@sundt.com";
 
-// Scoring categories now live in Firestore (the "criteria" collection) and
-// are managed from the Admin Console's "Categories" tab -- add, remove,
-// rename, reweight, or redescribe any category at any time. This list is
-// only used to seed Firestore: automatically the very first time the app
-// runs (if the "criteria" collection is empty), or manually later if the
-// admin clicks "Load recommended defaults" on the Categories tab.
-export const DEFAULT_CRITERIA = [
-  {
-    label: "Business Need Alignment",
-    weight: 10,
-    description: "Does the application clearly address the stated business problem?"
-  },
-  {
-    label: "User Value and Impact",
-    weight: 10,
-    description: "How useful, meaningful, or beneficial would this be to its intended users?"
-  },
-  {
-    label: "Functionality",
-    weight: 5,
-    description: "Does the core application work as demonstrated?"
-  },
-  {
-    label: "Innovation and Creativity",
-    weight: 5,
-    description: "Is the approach original, clever, or meaningfully different?"
-  },
-  {
-    label: "User Experience and Design",
-    weight: 5,
-    description: "Is it intuitive, accessible, and pleasant to use?"
-  },
-  {
-    label: "Technical Execution",
-    weight: 5,
-    description: "How well-built, reliable, and thoughtfully engineered is it?"
-  },
-  {
-    label: "Feasibility and Scalability",
-    weight: 5,
-    description: "Could the idea realistically be developed or deployed further?"
-  },
-  {
-    label: "Completeness and Polish",
-    weight: 5,
-    description: "Does the solution feel cohesive and ready for the next step?"
-  },
-  {
-    label: "Demo Quality and Storytelling",
-    weight: 5,
-    description: "Is the presentation clear, engaging, and focused on the solution's value?"
-  },
-  {
-    label: "Team Execution and Collaboration",
-    weight: 5,
-    description: "Did the team make effective use of the limited time and work cohesively?"
-  }
-];
+// Scoring categories live entirely in Firestore (the "criteria" collection).
+// There are no defaults in code: an admin loads them from an Excel file (or
+// adds them one by one) on the Admin Console's "Categories" tab. A brand-new
+// project starts with no categories until that's done.
 
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
