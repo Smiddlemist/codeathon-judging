@@ -154,6 +154,25 @@
     <!-- Categories management -->
     <div class="tab-panel" id="tab-categories">
       <div class="card">
+        <h2 style="margin-top:0;">Import categories from Excel</h2>
+        <p class="muted" style="font-size:13px;">
+          One row per category. Columns: <code>Order</code> (optional), <code>Category</code>, <code>Weight</code>,
+          <code>Question</code>, and <code>Level 1</code> to <code>Level 5</code> -- first row must be headers.
+          Categories are matched by name: a matching name is updated in place (existing scores stay linked),
+          a new name is added, and any current category that is <strong>not in the file is removed</strong>.
+          You'll see a preview before anything changes.
+        </p>
+        <div class="row">
+          <button id="critTemplateBtn" class="btn secondary small">⬇️ Download template</button>
+          <button id="critExportBtn" class="btn secondary small">⬇️ Download current categories</button>
+        </div>
+        <input type="file" id="critXlsxInput" accept=".xlsx" style="margin-top:12px;" />
+        <button id="critPreviewBtn" class="btn secondary" style="margin-top:12px;">Preview import</button>
+        <div id="critImportErr" class="err hidden"></div>
+        <div id="critImportOk" class="ok-msg hidden"></div>
+        <div id="critImportPreview" class="hidden"></div>
+      </div>
+      <div class="card">
         <div class="row between">
           <h2 style="margin:0;">Add a scoring category</h2>
           <button id="loadDefaultsBtn" class="btn secondary small">↺ Load recommended defaults</button>

@@ -888,6 +888,301 @@ async function moveCriterion(idx, dir) {
   await batch.commit();
 }
 
+// ---------- Categories Excel import / export ----------
+// SheetJS is loaded on demand the first time it's needed, so it never slows
+// down page load for people who don't use the import.
+const XLSX_URL = "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
+let xlsxLib = null;
+async function getXlsx() {
+  if (!xlsxLib) xlsxLib = await import(XLSX_URL);
+  return xlsxLib;
+}
+
+const CRIT_SHEET_HEADERS = ["Order", "Category", "Weight", "Question", "Level 1", "Level 2", "Level 3", "Level 4", "Level 5"];
+let pendingImportRows = null; // parsed + validated rows waiting for the admin to confirm
+
+// <pure-import-logic>
+// Reads the workbook and validates every row. Returns { rows, errors }.
+// Nothing is written anywhere here; errors name the Excel row and column.
+function parseCategoriesWorkbook(XLSX, wb) {
+  const sheetName = wb.SheetNames.find((n) => n.trim().toLowerCase() === "categories") || wb.SheetNames[0];
+  if (!sheetName) return { rows: [], errors: ["The workbook has no sheets."] };
+  const grid = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: "", blankrows: true });
+  if (!grid.length) return { rows: [], errors: [`Sheet "${sheetName}" is empty.`] };
+
+  const headerRow = grid[0].map((h) => String(h).trim().toLowerCase());
+  const find = (...names) => headerRow.findIndex((h) => names.includes(h));
+  const col = {
+    order: find("order"),
+    label: find("category"),
+    weight: find("weight"),
+    question: find("question", "description"),
+    levels: [1, 2, 3, 4, 5].map((n) => find(`level ${n}`))
+  };
+  const missing = [];
+  if (col.label < 0) missing.push("Category");
+  if (col.weight < 0) missing.push("Weight");
+  if (col.question < 0) missing.push("Question");
+  col.levels.forEach((idx, i) => { if (idx < 0) missing.push(`Level ${i + 1}`); });
+  if (missing.length) {
+    return { rows: [], errors: [`Sheet "${sheetName}" is missing required column(s): ${missing.join(", ")}. The first row must contain the headers.`] };
+  }
+
+  const text = (row, idx) => String(row[idx] ?? "").trim();
+  const errors = [];
+  const rows = [];
+  const seen = new Map(); // lowercase label -> first Excel row
+
+  for (let i = 1; i < grid.length; i++) {
+    const cells = grid[i];
+    if (cells.every((v) => String(v ?? "").trim() === "")) continue; // skip fully blank rows
+    const xr = i + 1; // Excel row number (header is row 1)
+
+    const label = text(cells, col.label);
+    if (!label) {
+      errors.push(`Row ${xr}: Category is empty.`);
+    } else {
+      const key = label.toLowerCase();
+      if (seen.has(key)) errors.push(`Row ${xr}: Category "${label}" is a duplicate of row ${seen.get(key)}.`);
+      else seen.set(key, xr);
+    }
+
+    const weightRaw = text(cells, col.weight);
+    const weight = Number(weightRaw);
+    if (weightRaw === "" || !Number.isFinite(weight) || !(weight > 0)) {
+      errors.push(`Row ${xr}: Weight must be a number greater than 0${weightRaw === "" ? " (it is empty)" : ` (found "${weightRaw}")`}.`);
+    }
+
+    const description = text(cells, col.question);
+    if (!description) errors.push(`Row ${xr}: Question is empty.`);
+
+    const levels = col.levels.map((idx) => text(cells, idx));
+    levels.forEach((lv, n) => { if (!lv) errors.push(`Row ${xr}: Level ${n + 1} is empty.`); });
+
+    let order = null;
+    if (col.order >= 0) {
+      const orderRaw = text(cells, col.order);
+      if (orderRaw !== "") {
+        order = Number(orderRaw);
+        if (!Number.isFinite(order)) {
+          errors.push(`Row ${xr}: Order must be a number (found "${orderRaw}").`);
+          order = null;
+        }
+      }
+    }
+    rows.push({ xr, label, weight, description, levels, order, pos: rows.length });
+  }
+  if (!rows.length && !errors.length) errors.push("No category rows found below the header row.");
+  return { rows, errors };
+}
+
+// Compares the validated rows to the categories currently in Firestore.
+// Matching is by name (case-insensitive), so existing documents are updated in
+// place and the scores keyed to them stay attached.
+function buildImportPlan(rows, existing) {
+  const byLabel = new Map(existing.map((c) => [String(c.label).trim().toLowerCase(), c]));
+  const sorted = rows
+    .slice()
+    .sort((a, b) => ((a.order ?? a.pos + 1) - (b.order ?? b.pos + 1)) || (a.pos - b.pos));
+  const matchedIds = new Set();
+  const items = sorted.map((r, i) => {
+    const match = byLabel.get(r.label.toLowerCase());
+    const item = { row: r, order: i, match: match || null, changes: [] };
+    if (!match) return item;
+    matchedIds.add(match.id);
+    if (match.label !== r.label) item.changes.push("name text");
+    if (match.weight !== r.weight) item.changes.push(`weight ${match.weight} → ${r.weight}`);
+    if ((match.description || "") !== r.description) item.changes.push("question");
+    const oldLv = Array.isArray(match.levels) ? match.levels : [];
+    if (oldLv.length !== 5 || oldLv.some((v, n) => v !== r.levels[n])) item.changes.push("level descriptions");
+    if ((match.order ?? -1) !== i) item.changes.push("order");
+    return item;
+  });
+  const removals = existing.filter((c) => !matchedIds.has(c.id));
+  return { items, removals };
+}
+// </pure-import-logic>
+
+function showCritImportErrors(lines) {
+  const el = document.getElementById("critImportErr");
+  el.innerHTML = lines.map((l) => escapeHtml(l)).join("<br>");
+  el.classList.remove("hidden");
+  document.getElementById("critImportOk").classList.add("hidden");
+}
+function clearCritImportMessages() {
+  document.getElementById("critImportErr").classList.add("hidden");
+  document.getElementById("critImportOk").classList.add("hidden");
+}
+function clearCritImportPreview() {
+  pendingImportRows = null;
+  const box = document.getElementById("critImportPreview");
+  box.innerHTML = "";
+  box.classList.add("hidden");
+}
+
+function renderCritImportPreview(plan) {
+  const box = document.getElementById("critImportPreview");
+  const added = plan.items.filter((it) => !it.match);
+  const updated = plan.items.filter((it) => it.match && it.changes.length);
+  const unchanged = plan.items.filter((it) => it.match && !it.changes.length);
+
+  const statusOf = (it) => !it.match ? "New" : it.changes.length ? "Update" : "No change";
+  const rowsHtml =
+    plan.items.map((it) => `
+      <tr>
+        <td>${statusOf(it)}</td>
+        <td>${escapeHtml(it.row.label)}</td>
+        <td>${it.row.weight}</td>
+        <td>${it.match ? escapeHtml(it.changes.join(", ") || "—") : "—"}</td>
+      </tr>`).join("") +
+    plan.removals.map((c) => `
+      <tr style="color:#C42931;">
+        <td><strong>Remove</strong></td>
+        <td>${escapeHtml(c.label)}</td>
+        <td>${c.weight ?? ""}</td>
+        <td>not in the file</td>
+      </tr>`).join("");
+
+  let warn = "";
+  if (plan.removals.length) {
+    warn += `<p class="err" style="display:block;">${plan.removals.length} categor${plan.removals.length === 1 ? "y" : "ies"} will be removed. Scorecards already submitted keep their recorded values for ${plan.removals.length === 1 ? "it" : "them"}, but ${plan.removals.length === 1 ? "it" : "they"} will no longer count toward any team's weighted score.`;
+    if (added.length) warn += ` If you renamed a category in the sheet, it appears here as one removal plus one new category and its old scores will not carry over -- rename it in its category card instead.`;
+    warn += `</p>`;
+  }
+  if (scores.length && (updated.some((it) => it.changes.some((c) => c.startsWith("weight"))) || plan.removals.length || added.length)) {
+    warn += `<p class="muted" style="font-size:12.5px;">${scores.length} scorecard${scores.length === 1 ? " has" : "s have"} already been submitted. The leaderboard recalculates immediately. A judge reopening a previously scored team will need to score any newly added category before saving.</p>`;
+  }
+
+  box.innerHTML = `
+    <h3 style="margin:18px 0 6px;">Preview: ${added.length} new, ${updated.length} updated, ${unchanged.length} unchanged, ${plan.removals.length} removed</h3>
+    ${warn}
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Action</th><th>Category</th><th>Weight</th><th>Details</th></tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>
+    <div class="row" style="justify-content:flex-end;margin-top:12px;">
+      <button id="critImportCancelBtn" class="btn secondary">Cancel</button>
+      <button id="critImportApplyBtn" class="btn ${plan.removals.length ? "danger" : ""}">Apply import</button>
+    </div>`;
+  box.classList.remove("hidden");
+
+  document.getElementById("critImportCancelBtn").addEventListener("click", clearCritImportPreview);
+  document.getElementById("critImportApplyBtn").addEventListener("click", applyCritImport);
+}
+
+async function previewCritImport() {
+  clearCritImportMessages();
+  clearCritImportPreview();
+  const input = document.getElementById("critXlsxInput");
+  const file = input.files && input.files[0];
+  if (!file) { showCritImportErrors(["Choose an .xlsx file first."]); return; }
+  if (!/\.xlsx$/i.test(file.name)) { showCritImportErrors([`"${file.name}" is not an .xlsx file. Save the workbook as Excel Workbook (.xlsx).`]); return; }
+
+  let XLSX;
+  try {
+    XLSX = await getXlsx();
+  } catch (e) {
+    showCritImportErrors(["Could not load the Excel reader (SheetJS) from cdn.sheetjs.com. Check your connection or network filtering and try again.", String(e && e.message || e)]);
+    return;
+  }
+  let parsed;
+  try {
+    const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+    parsed = parseCategoriesWorkbook(XLSX, wb);
+  } catch (e) {
+    showCritImportErrors([`Could not read "${file.name}" as an Excel workbook.`, String(e && e.message || e)]);
+    return;
+  }
+  if (parsed.errors.length) {
+    showCritImportErrors([`Fix ${parsed.errors.length} problem${parsed.errors.length === 1 ? "" : "s"} in the file, then preview again. Nothing was changed.`, ...parsed.errors]);
+    return;
+  }
+  pendingImportRows = parsed.rows;
+  renderCritImportPreview(buildImportPlan(parsed.rows, criteria));
+}
+
+async function applyCritImport() {
+  if (!pendingImportRows) return;
+  clearCritImportMessages();
+  const applyBtn = document.getElementById("critImportApplyBtn");
+  const cancelBtn = document.getElementById("critImportCancelBtn");
+
+  // Re-check against the live categories in case they changed after the preview.
+  const plan = buildImportPlan(pendingImportRows, criteria);
+  const shown = document.getElementById("critImportPreview").querySelector("h3").textContent;
+  const added = plan.items.filter((it) => !it.match).length;
+  const updated = plan.items.filter((it) => it.match && it.changes.length).length;
+  const unchanged = plan.items.filter((it) => it.match && !it.changes.length).length;
+  const nowSummary = `Preview: ${added} new, ${updated} updated, ${unchanged} unchanged, ${plan.removals.length} removed`;
+  if (shown !== nowSummary) {
+    renderCritImportPreview(plan);
+    showCritImportErrors(["The categories changed since this preview was made. Review the updated preview, then apply again. Nothing was changed."]);
+    return;
+  }
+
+  applyBtn.disabled = true;
+  cancelBtn.disabled = true;
+  try {
+    const batch = writeBatch(db);
+    plan.items.forEach((it) => {
+      const data = {
+        label: it.row.label,
+        weight: it.row.weight,
+        description: it.row.description,
+        levels: it.row.levels,
+        order: it.order
+      };
+      if (it.match) batch.update(doc(db, "criteria", it.match.id), data);
+      else batch.set(doc(collection(db, "criteria")), { ...data, createdAt: Date.now() });
+    });
+    plan.removals.forEach((c) => batch.delete(doc(db, "criteria", c.id)));
+    await batch.commit();
+    clearCritImportPreview();
+    document.getElementById("critXlsxInput").value = "";
+    const ok = document.getElementById("critImportOk");
+    ok.textContent = `Import complete: ${added} added, ${updated} updated, ${unchanged} unchanged, ${plan.removals.length} removed.`;
+    ok.classList.remove("hidden");
+  } catch (e) {
+    applyBtn.disabled = false;
+    cancelBtn.disabled = false;
+    showCritImportErrors([
+      "The import failed and nothing was changed (all changes are applied together or not at all).",
+      String(e && e.message || e),
+      "If this says permission denied, confirm the deployed Firestore rules allow admin writes to /criteria."
+    ]);
+  }
+}
+
+async function downloadCategoriesWorkbook(rows, filename) {
+  clearCritImportMessages();
+  try {
+    const XLSX = await getXlsx();
+    const ws = XLSX.utils.aoa_to_sheet([CRIT_SHEET_HEADERS, ...rows]);
+    ws["!cols"] = [8, 26, 9, 40, 40, 40, 40, 40, 40].map((wch) => ({ wch }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Categories");
+    XLSX.writeFile(wb, filename);
+  } catch (e) {
+    showCritImportErrors(["Could not create the Excel file.", String(e && e.message || e)]);
+  }
+}
+
+document.getElementById("critTemplateBtn").addEventListener("click", () => {
+  downloadCategoriesWorkbook([], "codeathon-categories-template.xlsx");
+});
+document.getElementById("critExportBtn").addEventListener("click", () => {
+  if (!criteria.length) { showCritImportErrors(["There are no categories to download yet."]); return; }
+  const rows = criteria.map((c, i) => {
+    const lv = Array.isArray(c.levels) ? c.levels : [];
+    return [i + 1, c.label, c.weight, c.description || "", lv[0] || "", lv[1] || "", lv[2] || "", lv[3] || "", lv[4] || ""];
+  });
+  downloadCategoriesWorkbook(rows, "codeathon-scoring-categories.xlsx");
+});
+document.getElementById("critPreviewBtn").addEventListener("click", previewCritImport);
+document.getElementById("critXlsxInput").addEventListener("change", () => { clearCritImportMessages(); clearCritImportPreview(); });
+
 // ---------- Reset selects ----------
 function renderResetSelects() {
   const judgeSel = document.getElementById("resetJudgeSelect");
