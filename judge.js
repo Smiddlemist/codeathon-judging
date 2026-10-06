@@ -666,6 +666,15 @@ function renderNominationCheckboxes() {
   });
 }
 
+// Text describing what the chosen score means for this category. Empty when no
+// score is selected yet or the category has no level descriptions, in which
+// case nothing is shown.
+function levelText(c, n) {
+  if (typeof n !== "number" || !Array.isArray(c.levels) || c.levels.length !== 5) return "";
+  const t = c.levels[n - 1];
+  return t ? `<strong>${n}</strong> &ndash; ${escapeHtml(t)}` : "";
+}
+
 function renderCriteria() {
   criteriaContainer.innerHTML = "";
   if (criteria.length === 0) {
@@ -695,6 +704,7 @@ function renderCriteria() {
           ${infoBtn}
         </div>
         ${descHtml}
+        <div class="crit-level-desc" aria-live="polite" style="margin-top:6px;font-size:12.5px;line-height:1.4;"${levelText(c, val) ? "" : " hidden"}>${levelText(c, val)}</div>
       </div>
       <div class="crit-buttons"></div>
       <div class="crit-score-col${typeof val === "number" ? "" : " unscored"}">${typeof val === "number" ? val : "\u2013"}</div>
@@ -704,6 +714,7 @@ function renderCriteria() {
     const scoreCol = row.querySelector(".crit-score-col");
     const info = row.querySelector(".info-btn");
     const desc = row.querySelector(".crit-desc");
+    const levelDesc = row.querySelector(".crit-level-desc");
 
     for (let n = 1; n <= 5; n++) {
       const btn = document.createElement("button");
@@ -719,6 +730,9 @@ function renderCriteria() {
         });
         scoreCol.textContent = String(n);
         scoreCol.classList.remove("unscored");
+        const lt = levelText(c, n);
+        levelDesc.innerHTML = lt;
+        levelDesc.hidden = !lt;
         row.classList.remove("untouched-error");
         updateLiveScore();
         refreshDirtyIndicator();
