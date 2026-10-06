@@ -677,6 +677,10 @@ function levelText(c, n) {
   return t ? `<strong>${n}</strong> &ndash; ${escapeHtml(t)}` : "";
 }
 
+// Category descriptions are shown by default. If a judge collapses one, it
+// stays collapsed (across teams) for the rest of this page session.
+const collapsedDescs = new Set();
+
 function renderCriteria() {
   criteriaContainer.innerHTML = "";
   if (criteria.length === 0) {
@@ -692,8 +696,9 @@ function renderCriteria() {
     const row = document.createElement("div");
     row.className = "crit-row criterion-block";
     row.dataset.key = c.id;
-    const infoBtn = c.description ? `<button type="button" class="info-btn" aria-expanded="false" aria-label="Show description">i</button>` : "";
-    const descHtml = c.description ? `<div class="crit-desc hidden">${escapeHtml(c.description)}</div>` : "";
+    const descOpen = !collapsedDescs.has(c.id);
+    const infoBtn = c.description ? `<button type="button" class="info-btn" aria-expanded="${descOpen}" aria-label="${descOpen ? "Hide" : "Show"} description" title="${descOpen ? "Hide" : "Show"} description">i</button>` : "";
+    const descHtml = c.description ? `<div class="crit-desc${descOpen ? "" : " hidden"}">${escapeHtml(c.description)}</div>` : "";
     const val = sliderValues[c.id];
 
     row.innerHTML = `
@@ -743,6 +748,9 @@ function renderCriteria() {
         const isOpen = !desc.classList.contains("hidden");
         desc.classList.toggle("hidden", isOpen);
         info.setAttribute("aria-expanded", String(!isOpen));
+        info.setAttribute("aria-label", isOpen ? "Show description" : "Hide description");
+        info.title = isOpen ? "Show description" : "Hide description";
+        if (isOpen) collapsedDescs.add(c.id); else collapsedDescs.delete(c.id);
       });
     }
 

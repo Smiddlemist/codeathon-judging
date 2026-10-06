@@ -317,6 +317,9 @@ body.judge-theme header.top .btn.secondary:hover { background: rgba(255,255,255,
   cursor: pointer; padding: 0; flex-shrink: 0;
 }
 .info-btn:hover { border-color: var(--accent-blue); color: var(--accent-blue); }
+/* Filled when the description is showing; outlined when collapsed */
+.info-btn[aria-expanded="true"] { background: var(--accent-blue); border-color: var(--accent-blue); color: #FFFFFF; }
+.info-btn[aria-expanded="true"]:hover { opacity: 0.85; }
 .crit-desc { font-size: 11.5px; color: var(--text-muted-2); margin-top: 3px; line-height: 1.35; }
 .crit-desc.hidden { display: none; }
 
