@@ -64,7 +64,8 @@ const scorecardContent = document.getElementById("scorecardContent");
 const scTeamName = document.getElementById("scTeamName");
 const scTeamMeta = document.getElementById("scTeamMeta");
 const scTeamDescription = document.getElementById("scTeamDescription");
-const liveScoreVal = document.getElementById("liveScoreVal");
+const criteriaCountVal = document.getElementById("criteriaCountVal");
+const criteriaCountMax = document.getElementById("criteriaCountMax");
 const criteriaTotalFill = document.getElementById("criteriaTotalFill");
 const criteriaContainer = document.getElementById("criteriaContainer");
 const noCriteriaMsg = document.getElementById("noCriteriaMsg");
@@ -435,10 +436,11 @@ function renderTeamsRail() {
     if (currentTeam && currentTeam.id === team.id) item.classList.add("active");
 
     let statusLabel;
-    if (existing) statusLabel = weightedScoreOf(existing).toFixed(1);
+    if (existing) statusLabel = "\u2713 Scored";
     else if (draft) statusLabel = "draft";
     else statusLabel = "unscored";
 
+    item.title = team.name;
     item.innerHTML = `
       <span class="rail-team-name">${escapeHtml(team.name)}</span>
       <span class="rail-status">${statusLabel}</span>
@@ -680,8 +682,7 @@ function renderCriteria() {
   if (criteria.length === 0) {
     noCriteriaMsg.classList.remove("hidden");
     submitScoreBtn.disabled = true;
-    liveScoreVal.textContent = "0.0";
-    setTotalBar(0);
+    updateLiveScore();
     return;
   }
   noCriteriaMsg.classList.add("hidden");
@@ -691,7 +692,6 @@ function renderCriteria() {
     const row = document.createElement("div");
     row.className = "crit-row criterion-block";
     row.dataset.key = c.id;
-    const weightBadge = c.weight && c.weight !== 1 ? `<span class="pill">weight &times;${c.weight}</span>` : "";
     const infoBtn = c.description ? `<button type="button" class="info-btn" aria-expanded="false" aria-label="Show description">i</button>` : "";
     const descHtml = c.description ? `<div class="crit-desc hidden">${escapeHtml(c.description)}</div>` : "";
     const val = sliderValues[c.id];
@@ -700,18 +700,17 @@ function renderCriteria() {
       <div class="crit-row-info">
         <div class="crit-top">
           <span class="crit-label">${escapeHtml(c.label)}</span>
-          ${weightBadge}
           ${infoBtn}
         </div>
         ${descHtml}
-        <div class="crit-level-desc" aria-live="polite" style="margin-top:6px;font-size:12.5px;line-height:1.4;"${levelText(c, val) ? "" : " hidden"}>${levelText(c, val)}</div>
       </div>
-      <div class="crit-buttons"></div>
-      <div class="crit-score-col${typeof val === "number" ? "" : " unscored"}">${typeof val === "number" ? val : "\u2013"}</div>
+      <div class="crit-score-area">
+        <div class="crit-buttons"></div>
+        <div class="crit-level-desc" aria-live="polite"${levelText(c, val) ? "" : " hidden"}>${levelText(c, val)}</div>
+      </div>
     `;
 
     const buttonWrap = row.querySelector(".crit-buttons");
-    const scoreCol = row.querySelector(".crit-score-col");
     const info = row.querySelector(".info-btn");
     const desc = row.querySelector(".crit-desc");
     const levelDesc = row.querySelector(".crit-level-desc");
@@ -728,8 +727,6 @@ function renderCriteria() {
         buttonWrap.querySelectorAll(".score-btn").forEach((b) => {
           b.classList.toggle("active", Number(b.dataset.val) === n);
         });
-        scoreCol.textContent = String(n);
-        scoreCol.classList.remove("unscored");
         const lt = levelText(c, n);
         levelDesc.innerHTML = lt;
         levelDesc.hidden = !lt;
@@ -754,15 +751,14 @@ function renderCriteria() {
   updateLiveScore();
 }
 
+// Shows how many categories have a score so far (e.g. "5 / 7"). Deliberately
+// does NOT show any weighted score -- judges shouldn't see how categories are weighted.
 function updateLiveScore() {
-  const weighted = weightedScoreOfCurrent();
-  liveScoreVal.textContent = weighted.toFixed(1);
-  setTotalBar(weighted);
-}
-
-function setTotalBar(weighted) {
-  const fraction = Math.max(0, Math.min(1, weighted / 5));
-  criteriaTotalFill.style.width = (fraction * 100) + "%";
+  const total = criteria.length;
+  const done = criteria.filter((c) => touched[c.id]).length;
+  criteriaCountVal.textContent = String(done);
+  criteriaCountMax.textContent = "/ " + total;
+  criteriaTotalFill.style.width = (total ? (done / total) * 100 : 0) + "%";
 }
 
 [strengthsBox, improvementsBox, commentsBox].forEach((el) => {

@@ -137,13 +137,13 @@ body.judge-theme header.top .btn.secondary:hover { background: rgba(255,255,255,
   display: flex;
   align-items: flex-start;
   gap: 0;
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
   min-height: calc(100vh - 60px);
 }
 
 .teams-rail {
-  width: 260px;
+  width: 220px;
   flex-shrink: 0;
   background: #FFFFFF;
   border-right: 1px solid var(--border-gray);
@@ -264,7 +264,7 @@ body.judge-theme header.top .btn.secondary:hover { background: rgba(255,255,255,
 
 .scorecard-columns {
   display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(240px, 1fr);
+  grid-template-columns: minmax(0, 2.2fr) minmax(220px, 1fr);
   gap: 12px;
   align-items: start;
 }
@@ -281,7 +281,7 @@ body.judge-theme header.top .btn.secondary:hover { background: rgba(255,255,255,
 
 .crit-table-head {
   display: flex;
-  justify-content: space-between;
+  gap: 8px 12px;
   background: var(--navy);
   color: rgba(255,255,255,0.85);
   font-size: 10.5px;
@@ -291,6 +291,9 @@ body.judge-theme header.top .btn.secondary:hover { background: rgba(255,255,255,
   padding: 7px 12px;
   border-radius: 6px 6px 0 0;
 }
+
+.crit-table-head > div:first-child { flex: 1 1 130px; min-width: 0; }
+.crit-table-head > div:last-child { flex: 1 1 280px; min-width: 0; }
 
 .crit-row {
   display: flex;
@@ -327,15 +330,14 @@ body.judge-theme header.top .btn.secondary:hover { background: rgba(255,255,255,
 .score-btn:hover { border-color: var(--sundt-red); color: var(--sundt-red); }
 .score-btn.active { background: var(--sundt-red); border-color: var(--sundt-red); color: #FFFFFF; }
 
-.crit-score-col {
-  width: 40px; flex-shrink: 0;
-  text-align: center;
-  font-size: 14px; font-weight: 700; color: var(--charcoal);
-  background: var(--content-gray);
-  border-radius: 5px;
-  padding: 4px 0;
+.crit-score-area { flex: 1 1 280px; min-width: 0; }
+.crit-level-desc {
+  font-size: 11.5px;
+  color: var(--text-muted-2);
+  margin-top: 6px;
+  line-height: 1.35;
 }
-.crit-score-col.unscored { color: var(--text-muted-2); font-weight: 400; }
+.crit-level-desc strong { font-weight: 600; }
 
 .criteria-total-bar {
   display: flex;
@@ -353,6 +355,12 @@ body.judge-theme header.top .btn.secondary:hover { background: rgba(255,255,255,
 .criteria-total-fill { height: 100%; background: var(--sundt-red); border-radius: 999px; transition: width 0.2s ease; }
 .criteria-total-val { font-size: 16px; font-weight: 700; color: var(--charcoal); }
 .criteria-total-max { font-size: 12px; color: var(--text-muted-2); }
+
+/* Larger tap targets for the 1-5 buttons on phones and touch screens */
+@media (max-width: 760px), (pointer: coarse) {
+  .crit-buttons { gap: 8px; }
+  .score-btn { width: 42px; height: 42px; font-size: 15px; }
+}
 
 /* ---------- notes ---------- */
 
@@ -395,5 +403,5 @@ body.judge-theme header.top .btn.secondary:hover { background: rgba(255,255,255,
   .rail-item { border-left: none; border-bottom: 3px solid transparent; flex-shrink: 0; min-width: 140px; }
   .rail-item.active { border-left-color: transparent; border-bottom-color: var(--sundt-red); }
   .scorecard-panel { padding: 14px 12px 24px; }
-  .crit-score-col { width: 34px; }
+  .crit-table-head { display: none; }
 }
