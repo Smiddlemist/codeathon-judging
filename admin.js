@@ -19,7 +19,8 @@ const adminBadge = document.getElementById("adminBadge");
 let teams = [];
 let judges = [];
 let scores = [];
-let criteria = []; // [{id, label, weight, order}]
+let criteria = []; // [{id, label, weight, description, levels, order}]  levels = array of 5 strings (score 1..5), or [] if not set
+const LEVEL_COUNT = 5;
 let criteriaSeeded = false;
 let teamPenaltyValue = 0; // flat points deducted from a team's overall weighted score when penalized
 
@@ -741,6 +742,18 @@ function renderJudgesTable() {
 }
 
 // ---------- Categories CRUD ----------
+// Reads the five score-level textareas. All five filled in, or all five blank;
+// anything in between is an error so a category never ends up half-described.
+function collectLevels(textareas) {
+  const vals = textareas.map((el) => el.value.trim());
+  const filled = vals.filter(Boolean).length;
+  if (filled === 0) return { levels: [] };
+  if (filled < LEVEL_COUNT) {
+    return { error: `Fill in all ${LEVEL_COUNT} score level descriptions, or leave all of them blank (${filled} of ${LEVEL_COUNT} filled in).` };
+  }
+  return { levels: vals };
+}
+
 document.getElementById("addCritBtn").addEventListener("click", async () => {
   const labelEl = document.getElementById("newCritLabel");
   const weightEl = document.getElementById("newCritWeight");
@@ -760,12 +773,20 @@ document.getElementById("addCritBtn").addEventListener("click", async () => {
     errEl.classList.remove("hidden");
     return;
   }
+  const levelEls = Array.from({ length: LEVEL_COUNT }, (_, i) => document.getElementById(`newCritLevel${i + 1}`));
+  const lv = collectLevels(levelEls);
+  if (lv.error) {
+    errEl.textContent = lv.error;
+    errEl.classList.remove("hidden");
+    return;
+  }
   try {
     const nextOrder = criteria.length ? Math.max(...criteria.map((c) => c.order ?? 0)) + 1 : 0;
-    await addDoc(collection(db, "criteria"), { label, weight, description, order: nextOrder, createdAt: Date.now() });
+    await addDoc(collection(db, "criteria"), { label, weight, description, levels: lv.levels, order: nextOrder, createdAt: Date.now() });
     labelEl.value = "";
     weightEl.value = "1";
     descEl.value = "";
+    levelEls.forEach((el) => { el.value = ""; });
   } catch (e) {
     errEl.textContent = "Failed to add category.";
     errEl.classList.remove("hidden");
@@ -798,6 +819,11 @@ function renderCritTable() {
     const row = document.createElement("div");
     row.className = "card";
     row.style.marginBottom = "10px";
+    const savedLevels = Array.isArray(c.levels) ? c.levels : [];
+    const hasLevels = savedLevels.length === LEVEL_COUNT;
+    const levelFieldsHtml = Array.from({ length: LEVEL_COUNT }, (_, i) => `
+        <label>Score ${i + 1}${i === 0 ? " (poor)" : i === LEVEL_COUNT - 1 ? " (excellent)" : ""}</label>
+        <textarea class="levelInput" style="min-height:44px;">${escapeHtml(savedLevels[i] || "")}</textarea>`).join("");
     row.innerHTML = `
       <div class="row between">
         <div class="row">
@@ -812,6 +838,10 @@ function renderCritTable() {
       <input class="weightInput" type="number" min="0.1" step="0.1" value="${c.weight ?? 1}" style="max-width:120px;" />
       <label>Description (what judges should look for)</label>
       <textarea class="descInput" style="min-height:44px;">${escapeHtml(c.description || "")}</textarea>
+      <details style="margin-top:12px;">
+        <summary class="muted" style="cursor:pointer;font-size:13px;">Score level descriptions (${hasLevels ? "set" : "not set"})</summary>
+        ${levelFieldsHtml}
+      </details>
       <button class="btn saveCritBtn" style="margin-top:10px;">Save changes</button>
     `;
 
@@ -835,7 +865,12 @@ function renderCritTable() {
         alert("Weight must be a positive number.");
         return;
       }
-      await updateDoc(doc(db, "criteria", c.id), { label: newLabel, weight: newWeight, description: newDesc });
+      const lv = collectLevels(Array.from(row.querySelectorAll(".levelInput")));
+      if (lv.error) {
+        alert(lv.error);
+        return;
+      }
+      await updateDoc(doc(db, "criteria", c.id), { label: newLabel, weight: newWeight, description: newDesc, levels: lv.levels });
     });
 
     container.appendChild(row);
