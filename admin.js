@@ -319,6 +319,82 @@ function csvCell(val) {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
+// ---------- Detailed CSV export (one row per judge per team, with comments) ----------
+// Button is injected next to the existing leaderboard export so admin.html needs no change.
+(function addDetailedExportButton() {
+  const baseBtn = document.getElementById("exportCsvBtn");
+  if (!baseBtn || document.getElementById("exportDetailedCsvBtn")) return;
+  const btn = document.createElement("button");
+  btn.id = "exportDetailedCsvBtn";
+  btn.type = "button";
+  btn.className = baseBtn.className;
+  btn.textContent = "Export detailed scores + comments";
+  btn.style.marginLeft = "8px";
+  baseBtn.insertAdjacentElement("afterend", btn);
+
+  // Stop spreadsheet apps from running judge-typed text as a formula.
+  const safeText = (v) => {
+    const t = String(v ?? "");
+    return /^[=+\-@\t\r]/.test(t) ? "'" + t : t;
+  };
+
+  btn.addEventListener("click", () => {
+    if (!(loaded.teams && loaded.scores && loaded.criteria)) {
+      alert("Data is still loading. Try again in a moment.");
+      return;
+    }
+    if (scores.length === 0) {
+      alert("There are no submitted scores to export yet.");
+      return;
+    }
+
+    // Same team order as the leaderboard when available, otherwise by name.
+    const orderedTeams = lastLeaderboardRows.length
+      ? lastLeaderboardRows.map((r) => r.team)
+      : [...teams].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    const judgeNameById = {};
+    judges.forEach((j) => { judgeNameById[j.id] = j.name; });
+
+    const headers = [
+      "Team", "Judge",
+      ...criteria.map((c) => c.label),
+      "Strengths", "Areas to Improve", "Additional Comments"
+    ];
+    const lines = [headers.map(csvCell).join(",")];
+
+    orderedTeams.forEach((team) => {
+      scores
+        .filter((s) => s.teamId === team.id)
+        .sort((a, b) => (a.judgeName || "").localeCompare(b.judgeName || ""))
+        .forEach((s) => {
+          const row = [
+            team.name,
+            s.judgeName || judgeNameById[s.judgeId] || "Unknown judge",
+            ...criteria.map((c) => {
+              const v = s.criteria ? s.criteria[c.id] : undefined;
+              return typeof v === "number" ? v : "";
+            }),
+            safeText(s.strengths),
+            safeText(s.improvements),
+            safeText(s.additionalComments)
+          ];
+          lines.push(row.map(csvCell).join(","));
+        });
+    });
+
+    // BOM so Excel reads the file as UTF-8 (keeps accents/quotes in comments intact).
+    const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "codeathon-detailed-scores.csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+})();
+
 // ---------- Judge coverage matrix ----------
 function renderMatrix() {
   const thead = document.querySelector("#matrixTable thead");
