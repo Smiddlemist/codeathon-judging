@@ -117,6 +117,7 @@ function startListeners() {
     renderNominationsTable();
     renderPenaltiesTable();
     renderCoverageAlerts();
+    renderCalibration();
   });
   onSnapshot(query(collection(db, "judges"), orderBy("name")), (snap) => {
     judges = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -125,6 +126,7 @@ function startListeners() {
     renderResetSelects();
     renderMatrix();
     renderCoverageAlerts();
+    renderCalibration();
   });
   onSnapshot(collection(db, "scores"), (snap) => {
     scores = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -133,6 +135,7 @@ function startListeners() {
     renderMatrix();
     renderNominationsTable();
     renderCoverageAlerts();
+    renderCalibration();
     document.getElementById("statScores").textContent = scores.length;
   });
   onSnapshot(collection(db, "criteria"), (snap) => {
@@ -144,6 +147,7 @@ function startListeners() {
     renderLeaderboard();
     renderMatrix();
     renderCoverageAlerts();
+    renderCalibration();
   });
   onSnapshot(doc(db, "config", "settings"), (snap) => {
     teamPenaltyValue = snap.exists() && typeof snap.data().teamPenaltyValue === "number"
@@ -156,6 +160,7 @@ function startListeners() {
     const minInput = document.getElementById("minJudgesInput");
     if (minInput && document.activeElement !== minInput) minInput.value = minJudgesPerTeam;
     renderCoverageAlerts();
+    renderCalibration();
     renderLeaderboard();
   });
 }
@@ -283,6 +288,130 @@ document.getElementById("saveMinJudgesBtn").addEventListener("click", async () =
     errEl.classList.remove("hidden");
   }
 });
+
+
+// ---------- Judge calibration + adjusted ranking ----------
+// Some judges score harshly, some generously, some barely vary. This view shows each
+// judge's average and spread, and a second ranking where every judge's scores are put
+// on a common scale (z-score per judge, then mapped back onto the overall mean/spread).
+// The raw leaderboard stays the official ranking; this is a sanity check only.
+// Judges with fewer than MIN_CARDS_FOR_ADJUST scorecards (or no spread) are left unadjusted.
+const MIN_CARDS_FOR_ADJUST = 3;
+
+function meanOf(a) { return a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0; }
+function sdOf(a) {
+  if (a.length < 2) return 0;
+  const m = meanOf(a);
+  return Math.sqrt(a.reduce((x, y) => x + (y - m) * (y - m), 0) / a.length);
+}
+
+function renderCalibration() {
+  const judgeBody = document.querySelector("#calibJudgeTable tbody");
+  const teamBody = document.querySelector("#calibTeamTable tbody");
+  const summary = document.getElementById("calibSummary");
+  if (!judgeBody || !teamBody) return; // tab not in the DOM yet
+  if (!(loaded.teams && loaded.judges && loaded.scores && loaded.criteria)) {
+    judgeBody.innerHTML = loadingRow(6);
+    teamBody.innerHTML = loadingRow(7);
+    return;
+  }
+
+  const cards = scores
+    .filter((s) => s.criteria && criteria.some((c) => typeof s.criteria[c.id] === "number"))
+    .map((s) => ({ s, w: weightedScoreOf(s) }));
+
+  if (cards.length === 0) {
+    summary.textContent = "";
+    judgeBody.innerHTML = `<tr><td colspan="6" class="muted">No scorecards submitted yet.</td></tr>`;
+    teamBody.innerHTML = `<tr><td colspan="7" class="muted">No scorecards submitted yet.</td></tr>`;
+    return;
+  }
+
+  const grandMean = meanOf(cards.map((c) => c.w));
+  const grandSD = sdOf(cards.map((c) => c.w));
+  summary.textContent = `Across all ${cards.length} scorecards: average ${grandMean.toFixed(2)}, spread (std dev) ${grandSD.toFixed(2)}.`;
+
+  // per-judge stats
+  const byJudge = {};
+  cards.forEach((c) => {
+    const id = c.s.judgeId;
+    if (!byJudge[id]) {
+      const j = judges.find((x) => x.id === id);
+      byJudge[id] = { id, name: (j && j.name) || c.s.judgeName || "Unknown judge", vals: [] };
+    }
+    byJudge[id].vals.push(c.w);
+  });
+  Object.values(byJudge).forEach((j) => {
+    j.n = j.vals.length;
+    j.mean = meanOf(j.vals);
+    j.sd = sdOf(j.vals);
+    j.bias = j.mean - grandMean;
+    j.adjustable = j.n >= MIN_CARDS_FOR_ADJUST && j.sd > 0;
+  });
+
+  const judgeRows = Object.values(byJudge).sort((a, b) => b.bias - a.bias);
+  judgeBody.innerHTML = "";
+  judgeRows.forEach((j) => {
+    const notes = [];
+    if (j.n < MIN_CARDS_FOR_ADJUST) notes.push(`Too few scorecards (<${MIN_CARDS_FOR_ADJUST}), left unadjusted`);
+    else if (j.sd === 0) notes.push("Gave the same score everywhere, left unadjusted");
+    else if (j.sd < 0.3) notes.push("Very little spread");
+    if (j.n >= MIN_CARDS_FOR_ADJUST && j.bias >= 0.5) notes.push("Scores generously");
+    if (j.n >= MIN_CARDS_FOR_ADJUST && j.bias <= -0.5) notes.push("Scores harshly");
+    const biasTxt = (j.bias >= 0 ? "+" : "") + j.bias.toFixed(2);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${escapeHtml(j.name)}</td>
+      <td>${j.n}</td>
+      <td>${j.mean.toFixed(2)}</td>
+      <td>${j.sd.toFixed(2)}</td>
+      <td${Math.abs(j.bias) >= 0.5 && j.n >= MIN_CARDS_FOR_ADJUST ? ' style="color:var(--warn);font-weight:700;"' : ""}>${biasTxt}</td>
+      <td class="muted" style="white-space:normal;">${notes.length ? escapeHtml(notes.join("; ")) : "—"}</td>
+    `;
+    judgeBody.appendChild(tr);
+  });
+
+  // adjusted score for one scorecard
+  const adjustedOf = (c) => {
+    const j = byJudge[c.s.judgeId];
+    if (!j || !j.adjustable || grandSD === 0) return c.w;
+    const z = (c.w - j.mean) / j.sd;
+    return Math.min(5, Math.max(1, grandMean + z * grandSD));
+  };
+
+  const teamRows = teams.map((team) => {
+    const tc = cards.filter((c) => c.s.teamId === team.id);
+    const penalty = typeof team.penalty === "number" ? team.penalty : 0;
+    if (!tc.length) return { team, n: 0, raw: null, adj: null };
+    const raw = Math.max(0, meanOf(tc.map((c) => c.w)) - penalty);
+    const adj = Math.max(0, meanOf(tc.map(adjustedOf)) - penalty);
+    return { team, n: tc.length, raw, adj };
+  });
+
+  const scored = teamRows.filter((r) => r.raw !== null);
+  [...scored].sort((a, b) => b.raw - a.raw).forEach((r, i) => { r.rawRank = i + 1; });
+  [...scored].sort((a, b) => b.adj - a.adj).forEach((r, i) => { r.adjRank = i + 1; });
+  scored.sort((a, b) => a.adjRank - b.adjRank);
+
+  teamBody.innerHTML = "";
+  scored.forEach((r) => {
+    const move = r.rawRank - r.adjRank; // positive = moves up when adjusted
+    const moveTxt = move === 0 ? "—" : move > 0 ? `▲ ${move}` : `▼ ${-move}`;
+    const moveColor = move === 0 ? "" : move > 0 ? "color:#4FD1A5;" : "color:var(--warn);";
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${r.adjRank}</td>
+      <td>${escapeHtml(r.team.name)}</td>
+      <td>${r.n}</td>
+      <td>${r.adj.toFixed(2)}</td>
+      <td>${r.raw.toFixed(2)}</td>
+      <td>${r.rawRank}</td>
+      <td style="${moveColor}font-weight:700;">${moveTxt}</td>
+    `;
+    teamBody.appendChild(tr);
+  });
+  if (!scored.length) teamBody.innerHTML = `<tr><td colspan="7" class="muted">No team has been scored yet.</td></tr>`;
+}
 
 // ---------- Leaderboard ----------
 let lastLeaderboardRows = [];

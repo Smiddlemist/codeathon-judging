@@ -39,6 +39,7 @@
     <div class="tabs">
       <button class="tab-btn active" data-tab="leaderboard">📊 Leaderboard</button>
       <button class="tab-btn" data-tab="matrix">🧮 Judge Coverage</button>
+      <button class="tab-btn" data-tab="calibration">🎚️ Calibration</button>
       <button class="tab-btn" data-tab="nominations">🏅 Nominations</button>
       <button class="tab-btn" data-tab="teams">🏗️ Teams</button>
       <button class="tab-btn" data-tab="judges">👩‍⚖️ Judges</button>
@@ -88,6 +89,39 @@
         <p class="muted" style="font-size:13px;">✅ = scored, — = not yet. Numbers are the weighted score (/5) that judge gave.</p>
         <div class="table-scroll">
           <table id="matrixTable"><thead></thead><tbody></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Judge calibration + adjusted ranking -->
+    <div class="tab-panel" id="tab-calibration">
+      <div class="card">
+        <h2 style="margin-top:0;">Judge calibration</h2>
+        <p class="muted" style="font-size:13px;">
+          Each judge's average weighted score and spread. "vs. overall" is how far their average sits above (+) or below (&minus;) everyone's average.
+          Judges 0.5 or more away are highlighted. A tight spread means the judge gave similar scores to most teams, so their scores separate teams less.
+        </p>
+        <p id="calibSummary" class="muted" style="font-size:12.5px;"></p>
+        <div class="table-scroll">
+          <table id="calibJudgeTable">
+            <thead><tr><th>Judge</th><th>Scorecards</th><th>Average</th><th>Spread (std dev)</th><th>vs. overall</th><th>Note</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <h2 style="margin-top:0;">Adjusted ranking (for comparison)</h2>
+        <p class="muted" style="font-size:13px;">
+          Every judge's scores are put on a common scale before averaging, so a harsh judge and a generous judge count equally.
+          Judges with fewer than 3 scorecards are left unadjusted. <strong>The Leaderboard tab is still the official ranking.</strong>
+          Treat a big move here as a prompt to look closer, not a verdict: if judges saw different teams, part of their difference may be the teams, not the judge.
+          Penalties are applied after adjustment.
+        </p>
+        <div class="table-scroll">
+          <table id="calibTeamTable">
+            <thead><tr><th>Adj. rank</th><th>Team</th><th># Judges</th><th>Adjusted score</th><th>Raw score</th><th>Raw rank</th><th>Change</th></tr></thead>
+            <tbody></tbody>
+          </table>
         </div>
       </div>
     </div>
