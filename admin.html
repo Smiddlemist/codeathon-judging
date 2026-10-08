@@ -30,12 +30,14 @@
     </div>
     <div class="row">
       <span id="adminBadge" class="pill"></span>
+      <button id="rulesCheckBtn" class="btn secondary small" title="Test that the Firestore rules let this account read and write what the admin console needs">🔒 Check rules</button>
       <button id="backToScorecardBtn" class="btn secondary small">← Back to Scorecard</button>
       <button id="logoutBtn" class="btn secondary small">Sign out</button>
     </div>
   </header>
 
   <div class="wrap">
+    <div id="rulesBanner" class="card hidden" style="border-width:2px;"></div>
     <div class="tabs">
       <button class="tab-btn active" data-tab="leaderboard">📊 Leaderboard</button>
       <button class="tab-btn" data-tab="matrix">🧮 Judge Coverage</button>

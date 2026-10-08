@@ -8,7 +8,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
 import {
   collection, doc, addDoc, setDoc, deleteDoc, updateDoc, deleteField, onSnapshot, query, orderBy,
-  writeBatch, getDocs
+  writeBatch, getDocs, getDoc, limit
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 
 const notAdminScreen = document.getElementById("notAdminScreen");
@@ -105,6 +105,89 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
   });
 });
 
+
+// ---------- Firestore rules check ----------
+// Listener failures used to be silent (tables just sat on "Loading..."). Now any failure
+// shows a banner naming what was blocked and the usual causes, and the "Check rules"
+// button in the header runs a read test on every collection plus a harmless write test.
+const rulesBanner = document.getElementById("rulesBanner");
+const failedTargets = {}; // target -> error code
+
+function signedInEmail() {
+  return (auth.currentUser && auth.currentUser.email) || "(unknown)";
+}
+
+function permissionHelpHtml() {
+  const who = escapeHtml(signedInEmail());
+  const adminCfg = escapeHtml(String(ADMIN_EMAIL || "(not set)"));
+  return `
+    <p style="margin:6px 0 4px;">Usual causes, most likely first:</p>
+    <ol style="margin:0 0 6px 18px;padding:0;font-size:13px;line-height:1.5;">
+      <li>The Firestore rules still contain a <strong>placeholder admin email</strong> (such as admin@example.com) instead of the real one. You are signed in as <strong>${who}</strong>, and the app's ADMIN_EMAIL is <strong>${adminCfg}</strong>; the rules must name that exact address.</li>
+      <li>The rules were edited but <strong>not published</strong> in the Firebase Console (Firestore Database &rarr; Rules &rarr; Publish).</li>
+      <li>The rules don't cover this collection at all, so it falls through to deny.</li>
+    </ol>`;
+}
+
+function showRulesBanner(kind, innerHtml) {
+  if (!rulesBanner) return;
+  const color = kind === "ok" ? "#4FD1A5" : "var(--sundt-red)";
+  rulesBanner.style.borderColor = color;
+  rulesBanner.innerHTML = `
+    <div class="row between" style="align-items:flex-start;">
+      <div style="flex:1;min-width:0;">${innerHtml}</div>
+      <button id="rulesBannerClose" class="btn secondary small">Dismiss</button>
+    </div>`;
+  rulesBanner.classList.remove("hidden");
+  document.getElementById("rulesBannerClose").addEventListener("click", () => rulesBanner.classList.add("hidden"));
+}
+
+function reportListenerError(target, e) {
+  console.error("Listener error on " + target, e);
+  failedTargets[target] = e && e.code ? e.code : "error";
+  const denied = Object.keys(failedTargets).filter((t) => failedTargets[t] === "permission-denied");
+  const other = Object.keys(failedTargets).filter((t) => failedTargets[t] !== "permission-denied");
+  let html = "";
+  if (denied.length) {
+    html += `<strong>⚠ Firestore rules blocked a read of: ${denied.map(escapeHtml).join(", ")}.</strong>` + permissionHelpHtml();
+  }
+  if (other.length) {
+    html += `<p style="margin:6px 0 0;"><strong>⚠ Couldn't load: ${other.map(escapeHtml).join(", ")}</strong> (${other.map((t) => escapeHtml(failedTargets[t])).join(", ")}). Check your connection and reload.</p>`;
+  }
+  showRulesBanner("error", html);
+}
+
+async function runRulesCheck() {
+  const btn = document.getElementById("rulesCheckBtn");
+  btn.disabled = true;
+  const origLabel = btn.textContent;
+  btn.textContent = "Checking…";
+  const results = [];
+  const tryOp = async (label, fn) => {
+    try { await fn(); results.push({ label, ok: true }); }
+    catch (e) { results.push({ label, ok: false, code: e && e.code ? e.code : "error" }); }
+  };
+  for (const name of ["teams", "judges", "scores", "criteria"]) {
+    await tryOp("Read " + name, () => getDocs(query(collection(db, name), limit(1))));
+  }
+  await tryOp("Read config/settings", () => getDoc(doc(db, "config", "settings")));
+  await tryOp("Write config/settings", () => setDoc(doc(db, "config", "settings"), { rulesCheckedAt: Date.now() }, { merge: true }));
+
+  const failed = results.filter((r) => !r.ok);
+  const lines = results.map((r) => `<li>${r.ok ? "✅" : "❌"} ${escapeHtml(r.label)}${r.ok ? "" : ` <span class="muted">(${escapeHtml(r.code)})</span>`}</li>`).join("");
+  const list = `<ul style="list-style:none;margin:6px 0;padding:0;font-size:13px;line-height:1.6;">${lines}</ul>`;
+  if (failed.length === 0) {
+    showRulesBanner("ok", `<strong>✅ Rules check passed.</strong> The admin account can read every collection and write settings.${list}<p class="muted" style="font-size:12px;margin:0;">This tests the admin account only. Judge-side saves (writing scorecards) can't be tested from here, so do one test judge save after any rules change. The write test sets a harmless "rulesCheckedAt" field on config/settings.</p>`);
+  } else {
+    const anyDenied = failed.some((r) => r.code === "permission-denied");
+    showRulesBanner("error", `<strong>❌ Rules check found ${failed.length} problem${failed.length === 1 ? "" : "s"}.</strong>${list}${anyDenied ? permissionHelpHtml() : `<p style="margin:0;">These weren't permission errors, so check your connection and try again.</p>`}`);
+  }
+  btn.disabled = false;
+  btn.textContent = origLabel;
+}
+
+document.getElementById("rulesCheckBtn").addEventListener("click", runRulesCheck);
+
 // ---------- Live data ----------
 function startListeners() {
   onSnapshot(query(collection(db, "teams"), orderBy("name")), (snap) => {
@@ -118,7 +201,7 @@ function startListeners() {
     renderPenaltiesTable();
     renderCoverageAlerts();
     renderCalibration();
-  });
+  }, (e) => reportListenerError("teams", e));
   onSnapshot(query(collection(db, "judges"), orderBy("name")), (snap) => {
     judges = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     loaded.judges = true;
@@ -127,7 +210,7 @@ function startListeners() {
     renderMatrix();
     renderCoverageAlerts();
     renderCalibration();
-  });
+  }, (e) => reportListenerError("judges", e));
   onSnapshot(collection(db, "scores"), (snap) => {
     scores = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     loaded.scores = true;
@@ -137,7 +220,7 @@ function startListeners() {
     renderCoverageAlerts();
     renderCalibration();
     document.getElementById("statScores").textContent = scores.length;
-  });
+  }, (e) => reportListenerError("scores", e));
   onSnapshot(collection(db, "criteria"), (snap) => {
     criteria = snap.docs
       .map((d) => ({ id: d.id, ...d.data() }))
@@ -148,7 +231,7 @@ function startListeners() {
     renderMatrix();
     renderCoverageAlerts();
     renderCalibration();
-  });
+  }, (e) => reportListenerError("criteria", e));
   onSnapshot(doc(db, "config", "settings"), (snap) => {
     teamPenaltyValue = snap.exists() && typeof snap.data().teamPenaltyValue === "number"
       ? snap.data().teamPenaltyValue
@@ -162,7 +245,7 @@ function startListeners() {
     renderCoverageAlerts();
     renderCalibration();
     renderLeaderboard();
-  });
+  }, (e) => reportListenerError("config/settings", e));
 }
 
 // ---------- Weighted scoring ----------
