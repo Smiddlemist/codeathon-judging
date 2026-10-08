@@ -72,6 +72,18 @@
     <!-- Judge coverage matrix -->
     <div class="tab-panel" id="tab-matrix">
       <div class="card">
+        <h2 style="margin-top:0;">Coverage alerts &amp; flagged scores</h2>
+        <p class="muted" style="font-size:13px;">Teams with fewer judges than the minimum are flagged, and so is any score 2+ points away from the median of the other judges on the same team and category (needs 3+ judges). Admin-only: judges never see these.</p>
+        <div class="row">
+          <div style="flex:0 0 200px;"><label for="minJudgesInput">Minimum judges per team</label><input id="minJudgesInput" type="number" min="1" step="1" value="3" /></div>
+          <button id="saveMinJudgesBtn" class="btn" style="align-self:flex-end;">Save</button>
+        </div>
+        <div id="minJudgesErr" class="err hidden"></div>
+        <div id="minJudgesOk" class="ok-msg hidden">Saved.</div>
+        <div id="coverageAlerts" style="margin-top:14px;"></div>
+        <div id="outlierList" style="margin-top:14px;"></div>
+      </div>
+      <div class="card">
         <h2 style="margin-top:0;">Who has scored whom</h2>
         <p class="muted" style="font-size:13px;">✅ = scored, — = not yet. Numbers are the weighted score (/5) that judge gave.</p>
         <div class="table-scroll">

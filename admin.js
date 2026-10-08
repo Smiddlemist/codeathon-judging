@@ -21,6 +21,7 @@ let judges = [];
 let scores = [];
 let criteria = []; // [{id, label, weight, description, levels, order}]  levels = array of 5 strings (score 1..5), or [] if not set
 const LEVEL_COUNT = 5;
+let minJudgesPerTeam = 3; // teams with fewer submitted scorecards than this are flagged as under-covered
 let teamPenaltyValue = 0; // flat points deducted from a team's overall weighted score when penalized
 
 // Tracks whether each collection's FIRST snapshot has arrived yet, so tables
@@ -115,6 +116,7 @@ function startListeners() {
     renderMatrix();
     renderNominationsTable();
     renderPenaltiesTable();
+    renderCoverageAlerts();
   });
   onSnapshot(query(collection(db, "judges"), orderBy("name")), (snap) => {
     judges = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -122,6 +124,7 @@ function startListeners() {
     renderJudgesTable();
     renderResetSelects();
     renderMatrix();
+    renderCoverageAlerts();
   });
   onSnapshot(collection(db, "scores"), (snap) => {
     scores = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -129,6 +132,7 @@ function startListeners() {
     renderLeaderboard();
     renderMatrix();
     renderNominationsTable();
+    renderCoverageAlerts();
     document.getElementById("statScores").textContent = scores.length;
   });
   onSnapshot(collection(db, "criteria"), (snap) => {
@@ -139,6 +143,7 @@ function startListeners() {
     renderCritTable();
     renderLeaderboard();
     renderMatrix();
+    renderCoverageAlerts();
   });
   onSnapshot(doc(db, "config", "settings"), (snap) => {
     teamPenaltyValue = snap.exists() && typeof snap.data().teamPenaltyValue === "number"
@@ -146,6 +151,11 @@ function startListeners() {
       : 0;
     const input = document.getElementById("penaltyValueInput");
     if (input && document.activeElement !== input) input.value = teamPenaltyValue;
+    const minVal = snap.exists() ? snap.data().minJudgesPerTeam : undefined;
+    minJudgesPerTeam = Number.isInteger(minVal) && minVal >= 1 ? minVal : 3;
+    const minInput = document.getElementById("minJudgesInput");
+    if (minInput && document.activeElement !== minInput) minInput.value = minJudgesPerTeam;
+    renderCoverageAlerts();
     renderLeaderboard();
   });
 }
@@ -165,6 +175,114 @@ function weightedScoreOf(scoreDoc) {
   });
   return weightTotal > 0 ? sum / weightTotal : 0;
 }
+
+
+// ---------- Outlier detection ----------
+// A score is flagged when it is 2+ points away from the median of the OTHER judges'
+// scores for the same team and category. Needs at least 3 judges on that team/category
+// (so there are 2+ "others" to compare against). Admin-only; judges never see this.
+const OUTLIER_GAP = 2;
+
+function medianOf(nums) {
+  const a = [...nums].sort((x, y) => x - y);
+  const mid = Math.floor(a.length / 2);
+  return a.length % 2 ? a[mid] : (a[mid - 1] + a[mid]) / 2;
+}
+
+// Returns a Map keyed "scoreId|criterionId" -> { team, score, criterion, value, median }
+function computeOutliers() {
+  const out = new Map();
+  if (!(loaded.teams && loaded.scores && loaded.criteria)) return out;
+  teams.forEach((team) => {
+    const teamScores = scores.filter((s) => s.teamId === team.id);
+    criteria.forEach((c) => {
+      const entries = teamScores
+        .map((s) => ({ s, v: s.criteria ? s.criteria[c.id] : undefined }))
+        .filter((e) => typeof e.v === "number");
+      if (entries.length < 3) return;
+      entries.forEach((e) => {
+        const others = entries.filter((o) => o !== e).map((o) => o.v);
+        const med = medianOf(others);
+        if (Math.abs(e.v - med) >= OUTLIER_GAP) {
+          out.set(e.s.id + "|" + c.id, { team, score: e.s, criterion: c, value: e.v, median: med });
+        }
+      });
+    });
+  });
+  return out;
+}
+
+// ---------- Coverage alerts + flagged scores ----------
+function renderCoverageAlerts() {
+  const alertsEl = document.getElementById("coverageAlerts");
+  const flagsEl = document.getElementById("outlierList");
+  if (!alertsEl || !flagsEl) return;
+  if (!(loaded.teams && loaded.judges && loaded.scores && loaded.criteria)) {
+    alertsEl.innerHTML = `<p class="muted">Loading…</p>`;
+    flagsEl.innerHTML = "";
+    return;
+  }
+
+  const activeJudges = judges.filter((j) => j.active !== false);
+  const under = teams
+    .map((t) => {
+      const scored = new Set(scores.filter((s) => s.teamId === t.id).map((s) => s.judgeId));
+      const missing = activeJudges.filter((j) => !scored.has(j.id)).map((j) => j.name);
+      return { team: t, n: scored.size, missing };
+    })
+    .filter((r) => r.n < minJudgesPerTeam)
+    .sort((a, b) => a.n - b.n || (a.team.name || "").localeCompare(b.team.name || ""));
+
+  if (teams.length === 0) {
+    alertsEl.innerHTML = `<p class="muted">No teams yet.</p>`;
+  } else if (under.length === 0) {
+    alertsEl.innerHTML = `<p class="ok-msg" style="margin:0;">✅ Every team has at least ${minJudgesPerTeam} judge${minJudgesPerTeam === 1 ? "" : "s"}.</p>`;
+  } else {
+    alertsEl.innerHTML =
+      `<p style="margin:0 0 8px;color:var(--warn);font-weight:600;">⚠ ${under.length} team${under.length === 1 ? "" : "s"} below the ${minJudgesPerTeam}-judge minimum</p>` +
+      `<div class="table-scroll" style="max-height:240px;"><table><thead><tr><th>Team</th><th>Judges so far</th><th>Active judges who haven't scored it</th></tr></thead><tbody>` +
+      under.map((r) => `<tr><td>${escapeHtml(r.team.name)}</td><td>${r.n} / ${minJudgesPerTeam}</td><td class="muted" style="white-space:normal;">${r.missing.length ? escapeHtml(r.missing.join(", ")) : "—"}</td></tr>`).join("") +
+      `</tbody></table></div>`;
+  }
+
+  const flags = [...computeOutliers().values()].sort(
+    (a, b) => (a.team.name || "").localeCompare(b.team.name || "") || (a.criterion.label || "").localeCompare(b.criterion.label || "")
+  );
+  if (flags.length === 0) {
+    flagsEl.innerHTML = `<p class="ok-msg" style="margin:0;">✅ No outlier scores (nothing ${OUTLIER_GAP}+ points from the other judges' median).</p>`;
+  } else {
+    flagsEl.innerHTML =
+      `<p style="margin:0 0 8px;color:var(--warn);font-weight:600;">⚠ ${flags.length} score${flags.length === 1 ? "" : "s"} ${OUTLIER_GAP}+ points from the other judges' median</p>` +
+      `<div class="table-scroll" style="max-height:300px;"><table><thead><tr><th>Team</th><th>Category</th><th>Judge</th><th>Gave</th><th>Others' median</th></tr></thead><tbody>` +
+      flags.map((f) => `<tr><td>${escapeHtml(f.team.name)}</td><td>${escapeHtml(f.criterion.label)}</td><td>${escapeHtml(f.score.judgeName || "Unknown judge")}</td><td><strong>${f.value}</strong></td><td>${Number.isInteger(f.median) ? f.median : f.median.toFixed(1)}</td></tr>`).join("") +
+      `</tbody></table></div>`;
+  }
+}
+
+document.getElementById("saveMinJudgesBtn").addEventListener("click", async () => {
+  const input = document.getElementById("minJudgesInput");
+  const okEl = document.getElementById("minJudgesOk");
+  const errEl = document.getElementById("minJudgesErr");
+  errEl.classList.add("hidden");
+  okEl.classList.add("hidden");
+  const val = Number(input.value);
+  if (!Number.isInteger(val) || val < 1) {
+    errEl.textContent = "Enter a whole number of 1 or more.";
+    errEl.classList.remove("hidden");
+    return;
+  }
+  try {
+    await setDoc(doc(db, "config", "settings"), { minJudgesPerTeam: val }, { merge: true });
+    okEl.classList.remove("hidden");
+    setTimeout(() => okEl.classList.add("hidden"), 2000);
+  } catch (e) {
+    console.error(e);
+    errEl.textContent = e.code === "permission-denied"
+      ? "Save failed: permission denied. Your Firestore rules need to let the admin account write the \"config\" collection."
+      : "Couldn't save. Check your connection and try again.";
+    errEl.classList.remove("hidden");
+  }
+});
 
 // ---------- Leaderboard ----------
 let lastLeaderboardRows = [];
@@ -205,6 +323,9 @@ function renderLeaderboard() {
 
   rows.sort((a, b) => b.weightedAvg - a.weightedAvg);
   lastLeaderboardRows = rows;
+  const outliers = computeOutliers();
+  const flagCountByTeam = {};
+  outliers.forEach((f) => { flagCountByTeam[f.team.id] = (flagCountByTeam[f.team.id] || 0) + 1; });
 
   tbody.innerHTML = "";
   rows.forEach((r, i) => {
@@ -213,10 +334,10 @@ function renderLeaderboard() {
     tr.style.cursor = "pointer";
     tr.innerHTML = `
       <td class="${rankClass}">${i + 1}</td>
-      <td>${escapeHtml(r.team.name)}</td>
+      <td>${escapeHtml(r.team.name)}${flagCountByTeam[r.team.id] ? ` <span class="pill" title="${flagCountByTeam[r.team.id]} outlier score(s). Open the team to see them." style="color:var(--warn);border-color:var(--warn);">⚠ ${flagCountByTeam[r.team.id]}</span>` : ""}</td>
       <td class="muted">${escapeHtml(r.team.lead || "—")}</td>
-      <td>${r.n}</td>
-      <td><strong>${r.weightedAvg.toFixed(1)}</strong>${r.penalty ? ` <span class="pill" title="Raw score ${r.rawAvg.toFixed(1)} minus ${r.penalty}-pt penalty${r.team.penaltyReason ? ": " + escapeHtml(r.team.penaltyReason) : ""}" style="background:#C42931;color:#fff;">-${r.penalty}</span>` : ""}</td>
+      <td${r.n < minJudgesPerTeam ? ` style="color:var(--warn);font-weight:700;" title="Below the ${minJudgesPerTeam}-judge minimum"` : ""}>${r.n}${r.n < minJudgesPerTeam ? " ⚠" : ""}</td>
+      <td><strong>${r.weightedAvg.toFixed(2)}</strong>${r.penalty ? ` <span class="pill" title="Raw score ${r.rawAvg.toFixed(2)} minus ${r.penalty}-pt penalty${r.team.penaltyReason ? ": " + escapeHtml(r.team.penaltyReason) : ""}" style="background:#C42931;color:#fff;">-${r.penalty}</span>` : ""}</td>
       ${criteria.map((c) => `<td>${r.critAvgs[c.id] === null ? "—" : r.critAvgs[c.id].toFixed(1)}</td>`).join("")}
     `;
     tr.addEventListener("click", () => openTeamDetail(r.team));
@@ -250,15 +371,18 @@ function openTeamDetail(team) {
   if (teamScores.length === 0) {
     detailContent.innerHTML = `<p class="muted">No judge has scored this team yet.</p>`;
   } else {
+    const detailOutliers = computeOutliers();
     detailContent.innerHTML = teamScores
       .map((s) => {
-        const weighted = weightedScoreOf(s).toFixed(1);
+        const weighted = weightedScoreOf(s).toFixed(2);
         const critLines = criteria
           .map((c) => {
             const val = s.criteria ? s.criteria[c.id] : undefined;
-            return typeof val === "number"
-              ? `<span class="pill" title="${escapeHtml(c.description || "")}" style="margin:2px;">${escapeHtml(c.label)}: ${val}</span>`
-              : "";
+            if (typeof val !== "number") return "";
+            const flag = detailOutliers.get(s.id + "|" + c.id);
+            return flag
+              ? `<span class="pill" title="Outlier: other judges' median is ${Number.isInteger(flag.median) ? flag.median : flag.median.toFixed(1)}" style="margin:2px;color:var(--warn);border-color:var(--warn);">⚠ ${escapeHtml(c.label)}: ${val}</span>`
+              : `<span class="pill" title="${escapeHtml(c.description || "")}" style="margin:2px;">${escapeHtml(c.label)}: ${val}</span>`;
           })
           .join("");
         const nomLines = s.nominations
@@ -411,7 +535,7 @@ function renderMatrix() {
     let cells = `<td>${escapeHtml(j.name)}</td>`;
     teams.forEach((t) => {
       const s = scores.find((sc) => sc.judgeId === j.id && sc.teamId === t.id);
-      cells += `<td>${s ? "✅ " + weightedScoreOf(s).toFixed(1) : '<span class="muted">—</span>'}</td>`;
+      cells += `<td>${s ? "✅ " + weightedScoreOf(s).toFixed(2) : '<span class="muted">—</span>'}</td>`;
     });
     tr.innerHTML = cells;
     tbody.appendChild(tr);
